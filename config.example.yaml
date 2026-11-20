@@ -1,4 +1,6 @@
-# Copy to config.yaml (gitignored) and fill in. Secrets can instead come from env vars:
+# Copy to config.yaml (gitignored) and fill in. Most settings can also be changed later on the
+# dashboard's Settings page; those edits are stored in the brain's database and override this file.
+# Secrets can instead come from env vars:
 #   HA_AGENT_TOKEN, HA_DISCORD_WEBHOOK_URL, HA_MAIL_PASSWORD, HA_DASHBOARD_PASSWORD
 timezone: America/Chicago
 
@@ -16,6 +18,7 @@ watch:
     allow:
       - handle: "+1785555XXXX"            # phone (E.164) or Apple ID email
         label: Wife
+        enabled: true
       # - chat_id: "iMessage;+;chat123456"  # a whole group chat
       #   label: Family group
     allow_self_notes: false               # process messages *I* send in allowed chats
@@ -33,12 +36,8 @@ watch:
 rules:
   default_alert_time: "16:00"
   review_threshold: 0.75
+  reminder_list: Household                # every reminder goes to this one list
   create_missing_lists: true
-  lists:
-    default: Household
-    routes:
-      - match: [eggs, milk, bread, groceries, grocery, store, butter, cheese, produce]
-        list: Groceries
   calendars:
     default: Family
     default_duration_min: 60

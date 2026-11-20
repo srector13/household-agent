@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Activity · Household Agent{% endblock %}
+{% block heading %}Activity{% endblock %}
+{% block subheading %}<div class="sub">Every message the agent has seen, newest first</div>{% endblock %}
+{% block content %}
+<div class="stack">
+  <form class="row-flex" method="get" action="/activity">
+    <div class="search" style="flex:1;min-width:220px">{{ icon("search", 16) }}<input type="search" name="q" value="{{ q }}" placeholder="Search messages, people, items…"></div>
+    {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+    <select name="source" onchange="this.form.submit()" style="width:auto">
+      <option value="">All sources</option>
+      <option value="imessage" {{ "selected" if source == "imessage" }}>iMessage</option>
+      <option value="mail" {{ "selected" if source == "mail" }}>Mail</option>
+    </select>
+  </form>
+  <div class="chips">
+    {% set base = "&q=" ~ (q|urlencode) ~ ("&source=" ~ source if source else "") %}
+    <a class="chip {{ 'on' if not status }}" href="/activity?{{ base[1:] }}">All <span class="n">{{ counts.values()|sum }}</span></a>
+    {% for s in statuses %}{% if counts.get(s) %}
+    <a class="chip {{ 'on' if status == s }}" href="/activity?status={{ s }}{{ base }}">{{ badge(s)[0] }} <span class="n">{{ counts[s] }}</span></a>
+    {% endif %}{% endfor %}
+  </div>
+  <div class="card list" id="feed">
+    {% for e in events %}{% include "_row.html" %}{% else %}
+    <div class="empty">{{ icon("search", 32) }}<div>{{ "No matches." if q or status else "No messages yet." }}</div></div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => HA.liveFeed(document.getElementById("feed"), { prepend: {{ "false" if (q or status or source) else "true" }} }));
+</script>
+{% endblock %}

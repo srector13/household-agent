@@ -1,0 +1,16 @@
+{% macro initials(name) -%}
+{%- set parts = (name or "?").replace("+", "").split() -%}
+{{- (parts[0][:1] ~ (parts[1][:1] if parts|length > 1 else "")).upper() if parts else "?" -}}
+{%- endmacro %}
+
+{% macro status_badge(s) -%}{% set b = badge(s) %}<span class="badge b-{{ b[1] }}">{{ b[0] }}</span>{%- endmacro %}
+
+{% macro action_pills(e) -%}
+{% if e.extraction and e.extraction.actions %}
+<div class="out">
+  {% for a in e.extraction.actions %}
+  <span class="pill {{ 'ev' if a.type == 'create_event' else 'rem' }}">{{ icon("calendar" if a.type == "create_event" else "check-square", 14) }}{{ a.title }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}

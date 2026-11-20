@@ -37,7 +37,10 @@ mkdir -p data && sudo chown 1000 data   # the container runs as uid 1000
 BIND_ADDR=$(tailscale ip -4) docker compose up -d --build
 ```
 
-Open `http://<server>.<tailnet>.ts.net:8080`. Secrets can come from env vars instead of the file
+Open `http://<server>.<tailnet>.ts.net:8080`. Most settings (people to watch, the reminders list,
+model, alerts, mail) can then be changed on the dashboard's **Settings** page. Those edits are saved in
+the brain's database on top of `config.yaml`, apply immediately, and each field shows whether it comes
+from the file or the dashboard (with a reset link). Secrets can come from env vars instead of the file
 (`HA_AGENT_TOKEN`, `HA_DISCORD_WEBHOOK_URL`, `HA_MAIL_PASSWORD`, `HA_DASHBOARD_PASSWORD`). The
 dashboard has no login of its own and relies on Tailscale; set `dashboard.password` if you want
 HTTP basic auth on top (user `admin`). The SQLite DB and nightly backups live in `brain/data/`.
@@ -52,7 +55,7 @@ curl -X POST "http://localhost:8080/api/events?sync=true" \
   -d '{"event_id":"manual:1","sender_handle":"+1785555XXXX","received_at":"2026-11-20T16:52:00-06:00","text":"Can you grab eggs tomorrow?"}'
 ```
 
-The **Try** page in the dashboard does a dry run (prompt → raw output → planned commands) and
+The **Test lab** page does a dry run (prompt → raw output → planned commands) and
 stores or creates nothing. Use it to tune `prompts/extract.md`, and bump `version` when you change it.
 
 ### 2. Mac agent (M2 MacBook Air)
@@ -72,22 +75,39 @@ troubleshooting. For lid-closed, always-on operation (phase 6), run
 ## Development
 
 ```sh
-make test          # brain: 58 tests, no network (fake LLM)
+make test          # brain: 74 tests, no network (fake LLM)
 make run           # brain locally on :8080 with ./config.yaml
 make agent-test    # mac-agent: swift test (also runs on Linux, minus EventKit)
 ```
 
+## Dashboard
+
+| Page | What it's for |
+|---|---|
+| **Overview** | Today's numbers, the live pipeline (Mac agent → gate → LLM → planner → queue → Reminders, each with status and 24h counts, lighting up as messages flow), recent activity, what's coming up, 14-day chart |
+| **Activity** | Every message with search and status filters; each one opens a step-by-step trace (prompt, raw model output, commands, Mac results) with Undo / Retry / Edit |
+| **Review** | Low-confidence items with one-tap Approve / Reject |
+| **Created items** | Everything the agent put in Reminders and Calendar that hasn't been undone |
+| **Test lab** | Dry-run a message against the live model |
+| **System** | Every component's health, funnel, command queue, alerts, settings change log, the prompt; test-alert and back-up-now buttons |
+| **Settings** | People & chats to watch (add, rename, pause, remove), reminders list, alert times, review threshold, model endpoint (with connection test), Discord, mail |
+
+It's built for the iPhone (bottom tab bar, add it to the home screen) and works in light and dark mode.
+Writes from other sites are blocked (same-origin check). Set `dashboard.password` if more people
+share your tailnet, since anyone who can open the dashboard can change settings.
+
 ## How it behaves
 
-- **Privacy:** messages from senders or chats not on the allowlist get an `ignored` reply and
-  nothing about them is stored. All inference stays on the Spark.
+- **Privacy:** the Mac agent syncs the allowlist from the brain (`GET /api/agent/config`), so texts
+  from anyone else never leave the Mac. The brain also checks it and stores nothing for
+  non-allowlisted senders. All inference stays on the Spark.
 - **Gate (no LLM):** tapbacks, emoji-only, ≤3 chars, “ok/lol/thanks…”, and your own messages
   (unless `allow_self_notes`) are logged as `skipped`.
 - **Extraction:** temperature 0, `response_format: json_schema`, thinking disabled via
   `chat_template_kwargs`. Relative dates resolve against the message's arrival time, and the
   prompt includes a 15-day calendar. One retry on a timeout or 5xx. If vLLM is down, events stay
   `received` and are retried automatically. After 3 failed calls a Discord alert goes out.
-- **Planner:** routes lists by keyword (`rules.lists.routes`), defaults the alert to 16:00 (an
+- **Planner:** every reminder goes to one list (`rules.reminder_list`), defaults the alert to 16:00 (an
   alert already past for today becomes ~10 minutes from now), sets 60-minute default event
   lengths, and adds a 30-minute event alarm. Low confidence (<0.75), a past date or a missing
   event start puts the event in **needs review** and posts the dashboard link to Discord.
@@ -106,7 +126,7 @@ The plan says to ask before choosing between equally valid setup options. These 
 place and easy to change in `config.yaml`:
 
 1. **Brain host:** built for the Surface Pro 8 home server (Docker). Nothing is host-specific.
-2. **List and calendar names:** `Groceries` and `Household` for reminders, `Family` for events.
-   Lists are created if they don't exist (`rules.create_missing_lists`); calendars are not.
+2. **List and calendar names:** all reminders go to `Household`, events to `Family` (change both in
+   Settings). The list is created if it doesn't exist (`rules.create_missing_lists`); calendars are not.
 3. **Mail account:** `watch.mail` is disabled until you fill in the host and username and set
    an app password in `HA_MAIL_PASSWORD`.

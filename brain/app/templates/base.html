@@ -4,18 +4,72 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#f4f5f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0c11" media="(prefers-color-scheme: dark)">
 <title>{% block title %}Household Agent{% endblock %}</title>
-<link rel="stylesheet" href="/static/style.css">
-<script src="/static/htmx.min.js" defer></script>
+<link rel="stylesheet" href="/static/app.css?v={{ version }}">
+<script src="/static/app.js?v={{ version }}"></script>
 </head>
 <body>
-<header>
-  <a class="brand" href="/">🏠 Household Agent</a>
-  <nav><a href="/">Feed</a><a href="/health">Health</a><a href="/stats">Stats</a><a href="/playground">Try</a></nav>
-</header>
-<main>
-{% block content %}{% endblock %}
-</main>
+{% set NAV = [
+  ("overview", "/", "dashboard", "Overview"),
+  ("activity", "/activity", "activity", "Activity"),
+  ("review", "/review", "review", "Review"),
+  ("items", "/items", "check-square", "Created items"),
+] %}
+{% set NAV2 = [
+  ("lab", "/lab", "lab", "Test lab"),
+  ("system", "/system", "server", "System"),
+  ("settings", "/settings", "settings", "Settings"),
+] %}
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="/"><span class="logo">{{ icon("home", 18) }}</span><span>Household Agent<small>control room</small></span></a>
+    <nav class="nav">
+      {% for key, href, ic, label in NAV %}
+      <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic) }} {{ label }}
+        {% if key == "review" %}<span class="count" data-review-count {{ "hidden" if not review_count }}>{{ review_count }}</span>{% endif %}</a>
+      {% endfor %}
+      <div class="nav-label">Tools</div>
+      {% for key, href, ic, label in NAV2 %}
+      <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic) }} {{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="side-status">
+      <div><span data-agent-dot class="dot {{ 'ok' if agent_online else 'bad' }}"></span> Mac agent</div>
+      <div><span data-llm-dot class="dot {{ 'ok' if llm_ok else 'bad' }}"></span> Model <span class="v mono">{{ cfg.llm.model.split('/')[-1][:18] }}</span></div>
+      <div class="faint">v{{ version }}</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <h1>{% block heading %}{% endblock %}</h1>
+        {% block subheading %}{% endblock %}
+      </div>
+      <div class="right">
+        {% block actions %}{% endblock %}
+        <span class="live" id="live" title="Live updates"><span class="dot"></span>Live</span>
+      </div>
+    </header>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+<nav class="tabbar">
+  {% for key, href, ic, label in NAV %}
+  <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic, 22) }}{{ label.split(' ')[-1]|capitalize if key == 'items' else label }}
+    {% if key == "review" %}<span class="count" data-review-count {{ "hidden" if not review_count }}>{{ review_count }}</span>{% endif %}</a>
+  {% endfor %}
+  <button id="more-btn" class="{{ 'on' if nav in ('lab','system','settings') }}" type="button">{{ icon("more", 22) }}More</button>
+</nav>
+<div class="sheet" id="more-sheet">
+  {% for key, href, ic, label in NAV2 %}<a href="{{ href }}">{{ icon(ic, 20) }} {{ label }}</a>{% endfor %}
+</div>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -117,10 +117,46 @@ longer exists is reported as `done`.
   "reminders_ok": true,
   "calendar_ok": true,
   "uptime_s": 3600,
-  "buffered_events": 0
+  "buffered_events": 0,
+  "allowlist_version": 7,
+  "allowlist_size": 3
 }
 ```
-Response `200 {"ok": true}`.
+- `allowlist_version`: `settings_version` of the allowlist the agent is filtering with, or
+  `null` when it has never synced one (or sync is off).
+- `allowlist_size`: number of handles + chat ids in the active prefilter.
+
+Response `200 {"ok": true, "settings_version": 7}`. When `settings_version` differs from the
+agent's cached `allowlist_version`, the agent refetches `GET /api/agent/config`.
+
+## GET /api/agent/config
+
+The brain-managed iMessage allowlist (edited on the dashboard's Settings page). The agent fetches
+it at startup, whenever the heartbeat reports a new `settings_version`, and every ~10 minutes as a
+fallback, and caches it in `synced_config.json` so it keeps filtering while the brain is down.
+
+```json
+{
+  "settings_version": 7,
+  "allow": {
+    "handles": ["+17855550000", "someone@icloud.com"],
+    "chat_ids": ["iMessage;+;chat123456"]
+  },
+  "allow_self_notes": false
+}
+```
+
+- Handles are normalized: emails lowercased; phone numbers `"+"` + digits, a 10-digit US number
+  prefixed with `1`. The agent normalizes chat.db handles the same way before comparing.
+- A message matches if its normalized handle is in `handles`, or its chat GUID or
+  `chat_identifier` is in `chat_ids`. For `is_from_me` messages the handle is the other party's
+  (or the chat identifier in group chats).
+- The agent filters **at send time** (when draining its outbox) as well as at scan time, so
+  list changes apply to events already buffered. Until a list has been synced at least once, the
+  agent holds events instead of sending or dropping them. Events that don't match are dropped
+  locally and the checkpoint moves past them; only the ROWID is logged.
+- A `404` (brain that predates this endpoint) makes the agent fall back to its local
+  `allow_handles` until the endpoint appears.
 
 ## Dashboard / debugging (no agent token; protect with Tailscale)
 

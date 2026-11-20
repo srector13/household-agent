@@ -57,13 +57,15 @@ if [[ ! -f "$CONFIG" ]]; then
   "brain_url": "${BRAIN_URL:-http://brain.your-tailnet.ts.net:8080}",
   "keychain_service": "$LABEL",
   "keychain_account": "agent_token",
+  "sync_allowlist": true,
   "allow_handles": [],
   "labels": {},
   "context_count": 5,
   "log_level": "info"
 }
 JSON
-  echo "    Edit it to set brain_url, labels and (optionally) allow_handles."
+  echo "    Edit it to set brain_url and labels. Who to watch is managed on the dashboard's Settings page"
+  echo "    (synced to the agent); allow_handles is only used when sync_allowlist is false."
 else
   echo "==> Keeping existing $CONFIG"
 fi

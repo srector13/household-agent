@@ -41,6 +41,8 @@ def allowlist_label(cfg: Config, ev: Event) -> tuple[bool, str | None]:
 
     sender = normalize_handle(ev.sender_handle)
     for entry in cfg.watch.imessage.allow:
+        if not entry.enabled:
+            continue
         if entry.chat_id and ev.chat_id and entry.chat_id == ev.chat_id:
             return True, entry.label or ev.sender_label
         if entry.handle and normalize_handle(entry.handle) == sender:

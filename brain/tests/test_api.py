@@ -28,7 +28,7 @@ def test_eggs_end_to_end(client, llm):
     c = cmds[0]
     assert c["op"] == "create_reminder"
     p = c["payload"]
-    assert p["title"] == "Pick up eggs" and p["list"] == "Groceries" and p["due"] == tomorrow()
+    assert p["title"] == "Pick up eggs" and p["list"] == "Household" and p["due"] == tomorrow()
     assert p["alert"].startswith(f"{tomorrow()}T16:00:00")
     assert p["tag"] == "[ha:imessage:1]" and p["notes"].endswith("[ha:imessage:1]")
     assert p["notes"].startswith('From Wife: "Can you grab eggs tomorrow?')
@@ -46,7 +46,7 @@ def test_eggs_end_to_end(client, llm):
         assert s in steps
     extract_step = next(t for t in ev["trace"] if t["step"] == "extract")
     assert extract_step["data"]["prompt"][0]["role"] == "system"
-    assert ev["event"]["prompt_version"] == "extract-v1"
+    assert ev["event"]["prompt_version"] == "extract-v2"
 
     # Undo → delete_item queued → done → undone
     r = client.post("/actions/undo/imessage:1", follow_redirects=False)
@@ -267,12 +267,13 @@ def test_dashboard_pages_render(client, llm):
     llm.responder = lambda p: extraction(reminder("Pick up eggs", due=tomorrow()))
     post(client, msg())
     post(client, msg(event_id="imessage:2", text="lol"))
-    for path in ["/", "/?status=skipped", "/health", "/stats", "/playground", "/events/imessage:1",
-                 "/partials/row/imessage:1", "/events/imessage:2"]:
+    for path in ["/", "/activity", "/activity?status=skipped", "/activity?q=eggs&source=imessage", "/review",
+                 "/items", "/system", "/settings", "/lab", "/events/imessage:1", "/partials/row/imessage:1",
+                 "/events/imessage:2", "/health", "/stats", "/playground"]:
         r = client.get(path)
         assert r.status_code == 200, path
     assert "Pick up eggs" in client.get("/").text
-    r = client.post("/playground", data={"text": "grab eggs tomorrow", "sender": "Wife", "context": "", "now": ""})
+    r = client.post("/lab", data={"text": "grab eggs tomorrow", "sender": "Wife", "context": "", "now": ""})
     assert r.status_code == 200 and "create_reminder" in r.text
     assert client.app_state.db.one("SELECT COUNT(*) n FROM events")["n"] == 2  # playground stores nothing
 

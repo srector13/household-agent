@@ -124,10 +124,33 @@ public final class MessagesDatabase {
 public struct EventBuilder {
     public var config: AgentConfig
     public var timeZone: TimeZone
+    /// Scan-time prefilter. The authoritative check for synced allowlists happens again at send
+    /// time (Agent.flush), so a list that changes while events sit in the outbox is respected.
+    public var prefilter: Prefilter
 
-    public init(config: AgentConfig, timeZone: TimeZone = .current) {
+    /// - local: `config.allowHandles` (sync off; legacy behaviour).
+    /// - synced(nil): sync on but never synced — buffer everything, flush holds it until a list arrives.
+    /// - synced(list): only allowlisted conversations are buffered.
+    public enum Prefilter: Equatable, Sendable {
+        case local
+        case synced(SyncedAllowlist?)
+    }
+
+    public init(config: AgentConfig, timeZone: TimeZone = .current, prefilter: Prefilter? = nil) {
         self.config = config
         self.timeZone = timeZone
+        self.prefilter = prefilter ?? (config.syncAllowlist ? .synced(nil) : .local)
+    }
+
+    public func passesPrefilter(handle: String?, chatIdentifier: String?, chatGUID: String?) -> Bool {
+        switch prefilter {
+        case .local:
+            return config.isAllowed(handle: handle, chatIdentifier: chatIdentifier, chatGUID: chatGUID)
+        case .synced(nil):
+            return true
+        case .synced(let list?):
+            return list.allows(handle: handle, chatIdentifier: chatIdentifier, chatGUID: chatGUID)
+        }
     }
 
     public enum Decision: Equatable {
@@ -148,7 +171,7 @@ public struct EventBuilder {
         if row.associatedMessageType != 0 { return .skip("tapback/reaction") }
         if row.itemType != 0 { return .skip("non-text item (type \(row.itemType))") }
         guard let handle = senderHandle(for: row) else { return .skip("no handle") }
-        guard config.isAllowed(handle: handle, chatIdentifier: row.chatIdentifier, chatGUID: row.chatGUID) else {
+        guard passesPrefilter(handle: handle, chatIdentifier: row.chatIdentifier, chatGUID: row.chatGUID) else {
             return .skip("not allowlisted")
         }
         guard let text = MessagesDatabase.bodyText(text: row.text, attributedBody: row.attributedBody,
@@ -159,7 +182,7 @@ public struct EventBuilder {
             eventId: "imessage:\(row.rowid)",
             source: "imessage",
             senderHandle: handle,
-            senderLabel: config.labels[handle],
+            senderLabel: config.labels[handle] ?? config.labels[HandleNormalizer.normalize(handle)],
             chatId: row.chatGUID ?? row.chatIdentifier,
             isFromMe: row.isFromMe,
             receivedAt: AppleDate.iso8601(AppleDate.fromMessageDate(row.date), timeZone: timeZone),

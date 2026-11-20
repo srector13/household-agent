@@ -26,7 +26,7 @@ ActionType = Literal["create_reminder", "create_event"]
 class Action(BaseModel):
     type: ActionType
     title: str
-    list: str | None = None
+    list: str | None = None  # ignored: every reminder goes to rules.reminder_list
     due_date: str | None = None  # YYYY-MM-DD
     due_time: str | None = None  # HH:MM (24h, local)
     start: str | None = None  # YYYY-MM-DDTHH:MM (local) or YYYY-MM-DD when all_day
@@ -63,13 +63,12 @@ EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
                 "type": "object",
                 "additionalProperties": False,
                 "required": [
-                    "type", "title", "list", "due_date", "due_time", "start", "end",
+                    "type", "title", "due_date", "due_time", "start", "end",
                     "all_day", "location", "calendar", "notes", "source_quote",
                 ],
                 "properties": {
                     "type": {"type": "string", "enum": ["create_reminder", "create_event"]},
                     "title": {"type": "string"},
-                    "list": _nullable("string"),
                     "due_date": _nullable("string", description="YYYY-MM-DD"),
                     "due_time": _nullable("string", description="HH:MM 24h local"),
                     "start": _nullable("string", description="YYYY-MM-DDTHH:MM local, or YYYY-MM-DD if all_day"),
@@ -96,6 +95,8 @@ class Heartbeat(BaseModel):
     calendar_ok: bool = False
     uptime_s: float = 0
     buffered_events: int = 0
+    allowlist_version: int | None = None
+    allowlist_size: int | None = None
 
 
 class CommandResult(BaseModel):

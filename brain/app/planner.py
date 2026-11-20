@@ -24,19 +24,6 @@ def item_tag(event_id: str, seq: int) -> str:
     return f"[ha:{event_id}]" if seq == 0 else f"[ha:{event_id}#{seq}]"
 
 
-def route_list(cfg: Config, action: Action) -> str:
-    haystack = f"{action.title} {action.source_quote}".lower()
-    for route in cfg.rules.lists.routes:
-        for word in route.match:
-            if re.search(rf"\b{re.escape(word.lower())}(s|es)?\b", haystack):
-                return route.list
-    if action.list:
-        for name in cfg.known_lists():
-            if name.lower() == action.list.strip().lower():
-                return name
-    return cfg.rules.lists.default
-
-
 def _parse_date(s: str | None) -> date | None:
     if not s:
         return None
@@ -118,7 +105,7 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
                 alert = alert_dt.isoformat()
             p.commands.append(PlannedCommand(op="create_reminder", payload={
                 "title": title,
-                "list": route_list(cfg, a),
+                "list": cfg.rules.reminder_list,
                 "create_list_if_missing": cfg.rules.create_missing_lists,
                 "due": due.isoformat() if due else None,
                 "due_time": due_time.strftime("%H:%M") if (due and due_time) else None,

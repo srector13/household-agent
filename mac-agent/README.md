@@ -15,7 +15,8 @@ It only makes **outbound** connections. The wire contract is in [`../docs/API.md
 Package.swift
 Sources/MacAgent/main.swift            CLI entry point (+ Info.plist embedded in the binary)
 Sources/MacAgentCore/
-  Agent.swift                 orchestrator: scan → outbox → brain, command loop, heartbeat
+  Agent.swift                 orchestrator: scan → outbox → brain, command loop, heartbeat, allowlist sync
+  Allowlist.swift             brain-synced allowlist, handle normalization, /api/agent/config types
   MessagesDatabase.swift      chat.db queries + EventBuilder (rows → events, recent_context)
   AttributedBodyDecoder.swift typedstream NSAttributedString → text (pure Swift)
   FileWatcher.swift           DispatchSource on chat.db and chat.db-wal (500 ms debounce in Agent)
@@ -93,7 +94,7 @@ Never grant Full Disk Access to Terminal or a Python interpreter for this — on
   "brain_url": "http://brain.your-tailnet.ts.net:8080",
   "keychain_service": "com.household.mac-agent",
   "keychain_account": "agent_token",
-  "allow_handles": ["+17855550000"],
+  "sync_allowlist": true,
   "labels": {"+17855550000": "Wife"},
   "context_count": 5,
   "log_level": "info"
@@ -104,7 +105,8 @@ Never grant Full Disk Access to Terminal or a Python interpreter for this — on
 |---|---|---|
 | `brain_url` | — (required) | Brain base URL (Tailscale MagicDNS name) |
 | `keychain_service` / `keychain_account` | `com.household.mac-agent` / `agent_token` | Keychain item with the bearer token. `HA_AGENT_TOKEN` env is the fallback. |
-| `allow_handles` | `[]` | Optional client-side prefilter: handles, chat identifiers or chat GUIDs. Empty = send everything; the **brain** enforces the real allowlist and drops the rest without storing it. Setting it here too keeps other conversations from ever leaving the Mac. |
+| `sync_allowlist` | `true` | Use the iMessage allowlist from the brain (edited on the dashboard's Settings page) as the prefilter, so other conversations never leave the Mac. Synced at startup, whenever the heartbeat reports a new `settings_version`, and every 10 min; cached in `synced_config.json`. Until a first sync succeeds, new events are **held** in the outbox (not sent, not dropped). Buffered events are re-checked at send time, so removing someone also drops their undelivered messages. |
+| `allow_handles` | `[]` | Only used when `sync_allowlist` is `false` (or the brain is too old to serve `/api/agent/config`): exact-match handles, chat identifiers or chat GUIDs. Empty = send everything and let the brain filter. |
 | `labels` | `{}` | Handle → name for `sender_label` and `recent_context` prefixes |
 | `context_count` | `5` | Previous messages in the same chat sent as `recent_context` |
 | `log_level` | `info` | `debug`, `info`, `warn`, `error` |
@@ -126,7 +128,7 @@ security add-generic-password -U -s com.household.mac-agent -a agent_token -w '<
   sees WAL commits. File events on `chat.db` / `chat.db-wal` trigger a scan after a 500 ms debounce;
   a 60 s safety poll covers missed events. Each scan reads `message.ROWID > last` joined with `handle`
   and `chat`, skips tapbacks/reactions (`associated_message_type != 0`), non-text items, empty bodies
-  and (optionally) non-allowlisted chats. `text` falls back to decoding `attributedBody`.
+  and chats not on the allowlist synced from the brain. `text` falls back to decoding `attributedBody`.
 - **Delivery:** every event goes through `outbox.jsonl` (append → POST → pop), so a brain outage
   or crash never loses a message and delivery stays in ROWID order. `state.json` keeps
   `last_rowid` (acknowledged by the brain with a 2xx, or deliberately skipped) and
@@ -157,6 +159,7 @@ mac-agent [--config PATH] [--backfill N] [--once] [--request-permissions] [--ver
 | `~/Library/Application Support/HouseholdAgent/config.json` | config |
 | `~/Library/Application Support/HouseholdAgent/state.json` | checkpoint |
 | `~/Library/Application Support/HouseholdAgent/outbox.jsonl` | undelivered events |
+| `~/Library/Application Support/HouseholdAgent/synced_config.json` | last allowlist synced from the brain |
 | `~/Library/Logs/HouseholdAgent/agent.log` | main log, rotated at 5 MB (`agent.log.1`–`.3`) |
 | `~/Library/Logs/HouseholdAgent/stderr.log` | launchd stderr (crashes only) |
 
@@ -181,7 +184,7 @@ charge limiting, automatic login and update settings.
 | `no agent token` and exit 78 | Store the token in the Keychain (see above) or set `HA_AGENT_TOKEN`. |
 | `brain rejected the agent token (401/403)` | Token mismatch with the brain's `security.agent_token`. |
 | `brain unreachable … event(s) buffered` | Brain down or Tailscale disconnected; events are kept in `outbox.jsonl` and sent when it is back. |
-| Texts show up in Messages but not the dashboard | Check `allow_handles` (agent) and the brain allowlist; run with `log_level: debug` to see per-ROWID skip reasons. |
+| Texts show up in Messages but not the dashboard | Check the allowlist on the dashboard's Settings page and the agent's `allowlist_version` on the Health page (it should match the brain's settings version). The log says "holding N event(s) until the allowlist is synced" if the agent has never reached `/api/agent/config`. Run with `log_level: debug` to see per-ROWID skip reasons. |
 | Messages from before install never appear | Expected — first run does not backfill. Use `--backfill N`. |
 | Agent restarts repeatedly | `stderr.log`; `launchctl print gui/$(id -u)/com.household.mac-agent`. |
 

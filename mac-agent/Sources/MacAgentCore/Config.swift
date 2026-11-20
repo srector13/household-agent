@@ -8,8 +8,11 @@ public struct AgentConfig: Codable, Equatable, Sendable {
     /// Keychain generic-password item holding the bearer token.
     public var keychainService: String
     public var keychainAccount: String
-    /// Optional client-side prefilter (handles, chat identifiers or chat GUIDs). The brain enforces
-    /// the real allowlist; an empty list means "send everything to the brain".
+    /// When true (default), the iMessage allowlist is synced from the brain (GET /api/agent/config)
+    /// and used as the prefilter; `allowHandles` is then ignored.
+    public var syncAllowlist: Bool
+    /// Local prefilter, used only when `syncAllowlist` is false (handles, chat identifiers or chat
+    /// GUIDs). The brain enforces the real allowlist; an empty list means "send everything".
     public var allowHandles: [String]
     /// Handle → display label (used for `sender_label` and recent_context prefixes).
     public var labels: [String: String]
@@ -30,6 +33,7 @@ public struct AgentConfig: Codable, Equatable, Sendable {
         case brainURL = "brain_url"
         case keychainService = "keychain_service"
         case keychainAccount = "keychain_account"
+        case syncAllowlist = "sync_allowlist"
         case allowHandles = "allow_handles"
         case labels
         case contextCount = "context_count"
@@ -45,6 +49,7 @@ public struct AgentConfig: Codable, Equatable, Sendable {
         brainURL: String,
         keychainService: String = AgentInfo.bundleIdentifier,
         keychainAccount: String = "agent_token",
+        syncAllowlist: Bool = true,
         allowHandles: [String] = [],
         labels: [String: String] = [:],
         contextCount: Int = 5,
@@ -58,6 +63,7 @@ public struct AgentConfig: Codable, Equatable, Sendable {
         self.brainURL = brainURL
         self.keychainService = keychainService
         self.keychainAccount = keychainAccount
+        self.syncAllowlist = syncAllowlist
         self.allowHandles = allowHandles
         self.labels = labels
         self.contextCount = contextCount
@@ -75,6 +81,7 @@ public struct AgentConfig: Codable, Equatable, Sendable {
         self = d
         keychainService = try c.decodeIfPresent(String.self, forKey: .keychainService) ?? d.keychainService
         keychainAccount = try c.decodeIfPresent(String.self, forKey: .keychainAccount) ?? d.keychainAccount
+        syncAllowlist = try c.decodeIfPresent(Bool.self, forKey: .syncAllowlist) ?? d.syncAllowlist
         allowHandles = try c.decodeIfPresent([String].self, forKey: .allowHandles) ?? d.allowHandles
         labels = try c.decodeIfPresent([String: String].self, forKey: .labels) ?? d.labels
         contextCount = try c.decodeIfPresent(Int.self, forKey: .contextCount) ?? d.contextCount
@@ -98,7 +105,7 @@ public struct AgentConfig: Codable, Equatable, Sendable {
         return AgentPaths.chatDB
     }
 
-    /// True when the message should be forwarded (client-side prefilter only).
+    /// Local prefilter (`allow_handles`), used when allowlist sync is off. Exact-match, as before.
     public func isAllowed(handle: String?, chatIdentifier: String?, chatGUID: String?) -> Bool {
         if allowHandles.isEmpty { return true }
         let set = Set(allowHandles)

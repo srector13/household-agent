@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 
 from app.gate import gate, normalize_handle
-from app.planner import plan, route_list
+from app.planner import plan
 from app.schemas import Action, Event, Extraction
 from conftest import TZ, event, extraction, make_cfg, reminder
 
@@ -58,13 +58,17 @@ def test_low_confidence_review(cfg):
     assert len(p.commands) == 1  # still planned, held for approval
 
 
-def test_list_routing(cfg):
-    a = Action(type="create_reminder", title="Get paper towels", list="groceries", source_quote="")
-    assert route_list(cfg, a) == "Groceries"  # model's list, canonicalized
-    a = Action(type="create_reminder", title="Get paper towels", list="Costco", source_quote="")
-    assert route_list(cfg, a) == "Household"  # unknown list -> default
-    a = Action(type="create_reminder", title="Pick up eggs", list=None, source_quote="")
-    assert route_list(cfg, a) == "Groceries"  # keyword
+def test_every_reminder_goes_to_the_one_list(cfg):
+    p = run(cfg, reminder("Pick up eggs", lst="Groceries"), reminder("Call the vet", lst="Costco"))
+    assert {c.payload["list"] for c in p.commands} == {"Household"}
+    cfg.rules.reminder_list = "To-do"
+    assert run(cfg, reminder("Pick up eggs")).commands[0].payload["list"] == "To-do"
+
+
+def test_old_lists_config_migrates():
+    from app.config import Config
+    c = Config.model_validate({"rules": {"lists": {"default": "Family To-dos", "routes": [{"match": ["eggs"], "list": "Groceries"}]}}})
+    assert c.rules.reminder_list == "Family To-dos"
 
 
 def test_event_default_duration_and_all_day(cfg):

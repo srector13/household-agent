@@ -47,7 +47,7 @@ def make_cfg(tmp_path, **over) -> Config:
         "watch": {"imessage": {"allow": [{"handle": "+1 (785) 555-0000", "label": "Wife"}]},
                   "mail": {"allow_senders": ["*@school.example.org"], "labels": {"*@school.example.org": "School"}}},
         "rules": {"default_alert_time": "16:00", "review_threshold": 0.75,
-                  "lists": {"default": "Household", "routes": [{"match": ["eggs", "milk", "bread", "groceries", "store"], "list": "Groceries"}]},
+                  "reminder_list": "Household",
                   "calendars": {"default": "Family"}},
         "security": {"agent_token": TOKEN},
         "storage": {"db_path": str(tmp_path / "brain.db"), "backup_dir": str(tmp_path / "backups")},

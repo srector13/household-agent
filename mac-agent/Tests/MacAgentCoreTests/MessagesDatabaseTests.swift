@@ -13,7 +13,8 @@ final class MessagesDatabaseTests: XCTestCase {
     }
 
     func config(allow: [String] = []) -> AgentConfig {
-        AgentConfig(brainURL: "http://brain", allowHandles: allow, labels: [wife: "Wife"], contextCount: 5)
+        AgentConfig(brainURL: "http://brain", syncAllowlist: false, allowHandles: allow, labels: [wife: "Wife"],
+                    contextCount: 5)
     }
 
     func testMessagesAfterAndBuilder() throws {
@@ -84,6 +85,13 @@ final class MessagesDatabaseTests: XCTestCase {
         XCTAssertEqual(rows.map { b.decide($0, context: []) }, [
             .skip("not allowlisted"), .skip("empty text"), .skip("empty text"), .skip("non-text item (type 2)"),
         ])
+        // Same result with a synced allowlist (normalized match on the wife's number only).
+        let synced = EventBuilder(config: config(), prefilter: .synced(
+            SyncedAllowlist(settingsVersion: 1, handles: ["(785) 555-0000"], chatIds: [])))
+        XCTAssertEqual(synced.decide(rows[0], context: []), .skip("not allowlisted"))
+        // Sync on but never synced: nothing is filtered at scan time (held at send time instead).
+        let unsynced = EventBuilder(config: config(), prefilter: .synced(nil))
+        if case .skip = unsynced.decide(rows[0], context: []) { XCTFail("must not filter before first sync") }
     }
 
     func testReadOnlyOpenCannotWrite() throws {

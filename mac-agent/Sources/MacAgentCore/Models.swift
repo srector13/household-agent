@@ -208,9 +208,14 @@ public struct Heartbeat: Codable, Equatable, Sendable {
     public var calendarOk: Bool
     public var uptimeS: Int
     public var bufferedEvents: Int
+    /// settings_version of the synced allowlist (null when never synced or sync is off).
+    public var allowlistVersion: Int?
+    /// Number of handles + chat ids in the active prefilter.
+    public var allowlistSize: Int
 
     public init(agentVersion: String = AgentInfo.version, lastRowid: Int64, fdaOk: Bool, remindersOk: Bool,
-                calendarOk: Bool, uptimeS: Int, bufferedEvents: Int) {
+                calendarOk: Bool, uptimeS: Int, bufferedEvents: Int, allowlistVersion: Int? = nil,
+                allowlistSize: Int = 0) {
         self.agentVersion = agentVersion
         self.lastRowid = lastRowid
         self.fdaOk = fdaOk
@@ -218,5 +223,38 @@ public struct Heartbeat: Codable, Equatable, Sendable {
         self.calendarOk = calendarOk
         self.uptimeS = uptimeS
         self.bufferedEvents = bufferedEvents
+        self.allowlistVersion = allowlistVersion
+        self.allowlistSize = allowlistSize
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case agentVersion, lastRowid, fdaOk, remindersOk, calendarOk, uptimeS, bufferedEvents
+        case allowlistVersion, allowlistSize
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        agentVersion = try c.decode(String.self, forKey: .agentVersion)
+        lastRowid = try c.decode(Int64.self, forKey: .lastRowid)
+        fdaOk = try c.decode(Bool.self, forKey: .fdaOk)
+        remindersOk = try c.decode(Bool.self, forKey: .remindersOk)
+        calendarOk = try c.decode(Bool.self, forKey: .calendarOk)
+        uptimeS = try c.decode(Int.self, forKey: .uptimeS)
+        bufferedEvents = try c.decode(Int.self, forKey: .bufferedEvents)
+        allowlistVersion = try c.decodeIfPresent(Int.self, forKey: .allowlistVersion)
+        allowlistSize = try c.decodeIfPresent(Int.self, forKey: .allowlistSize) ?? 0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(agentVersion, forKey: .agentVersion)
+        try c.encode(lastRowid, forKey: .lastRowid)
+        try c.encode(fdaOk, forKey: .fdaOk)
+        try c.encode(remindersOk, forKey: .remindersOk)
+        try c.encode(calendarOk, forKey: .calendarOk)
+        try c.encode(uptimeS, forKey: .uptimeS)
+        try c.encode(bufferedEvents, forKey: .bufferedEvents)
+        try c.encode(allowlistVersion, forKey: .allowlistVersion)  // explicit null when unsynced
+        try c.encode(allowlistSize, forKey: .allowlistSize)
     }
 }

@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% set v = s["values"] %}
+{% block title %}Settings · Household Agent{% endblock %}
+{% block heading %}Settings{% endblock %}
+{% block subheading %}<div class="sub">Changes apply immediately — no restart. Saved in the brain's database on top of config.yaml.</div>{% endblock %}
+
+{% macro src(path) %}<span class="src" data-src="{{ path }}"></span>{% endmacro %}
+{% macro text(path, label, help="", type="text", attrs="") %}
+<label class="f">
+  <span>{{ label }}{{ src(path) }}</span>
+  <input type="{{ type }}" data-path="{{ path }}" data-type="{{ 'int' if type == 'number' and 'step' not in attrs else 'float' if type == 'number' else 'str' }}" value="{{ v[path] if v[path] is not none else '' }}" {{ attrs|safe }}>
+  {% if help %}<span class="help">{{ help }}</span>{% endif %}
+</label>
+{% endmacro %}
+{% macro secret(path, label, help="") %}
+<label class="f">
+  <span>{{ label }}{{ src(path) }}</span>
+  <input type="password" data-path="{{ path }}" data-type="secret" autocomplete="off" placeholder="{{ '•••••••• saved — type to replace' if v[path] else 'not set' }}">
+  <span class="help">{{ help }}{% if v[path] %} <button type="button" class="link" style="background:none;border:0;padding:0;cursor:pointer;font-size:12.5px" onclick="clearSecret('{{ path }}')">Clear</button>{% endif %}</span>
+</label>
+{% endmacro %}
+{% macro toggle(path, label, help="") %}
+<div class="f" style="display:grid;gap:4px">
+  <label class="switch"><input type="checkbox" data-path="{{ path }}" data-type="bool" {{ "checked" if v[path] }}><span class="track"></span>{{ label }}{{ src(path) }}</label>
+  {% if help %}<span class="help">{{ help }}</span>{% endif %}
+</div>
+{% endmacro %}
+{% macro tags(path, label, help="", placeholder="add and press Enter") %}
+<div class="f full" style="display:grid;gap:6px">
+  <span style="font-weight:600;font-size:13px">{{ label }}{{ src(path) }}</span>
+  <div class="tags" data-path="{{ path }}" data-type="list" data-value='{{ (v[path] or [])|tojson }}'><input type="text" placeholder="{{ placeholder }}"></div>
+  {% if help %}<span class="help">{{ help }}</span>{% endif %}
+</div>
+{% endmacro %}
+{% macro foot(id) %}
+<div class="sec-foot"><span class="status" id="status-{{ id }}">All changes saved</span><button class="btn primary" type="submit">{{ icon("check", 15) }}Save</button></div>
+{% endmacro %}
+
+{% block content %}
+<div class="settings">
+  <nav class="subnav">
+    <a href="#people">{{ icon("users", 16) }}People & chats</a>
+    <a href="#reminders">{{ icon("check-square", 16) }}Reminders & calendar</a>
+    <a href="#model">{{ icon("sparkles", 16) }}Model</a>
+    <a href="#alerts">{{ icon("bell", 16) }}Alerts & dashboard</a>
+    <a href="#mail">{{ icon("mail", 16) }}Mail</a>
+    <a href="#general">{{ icon("globe", 16) }}General</a>
+  </nav>
+
+  <div class="stack">
+    <!-- PEOPLE -->
+    <section class="sec card" id="people">
+      <div class="card-h"><div><h2>People & chats</h2><p>Only messages from these are read. Everyone else is ignored and never stored{% if agent and agent.allowlist_version is not none %} — and never leaves the Mac{% endif %}.</p></div>
+        <div class="right">{% if agent %}{% if agent.allowlist_version == s.version %}<span class="badge b-ok" id="syncbadge">Mac synced</span>{% elif agent.allowlist_version is none %}<span class="badge b-muted" id="syncbadge">Mac not syncing</span>{% else %}<span class="badge b-info" id="syncbadge">Mac syncing…</span>{% endif %}{% endif %}</div></div>
+      <div class="card-b flush list" id="people-list"></div>
+      <form class="addrow" id="addperson" autocomplete="off">
+        <input type="text" name="label" placeholder="Name (e.g. Wife)" required>
+        <input type="text" name="who" placeholder="Phone, iCloud email, or group chat id" required>
+        <button class="btn primary" type="submit">{{ icon("plus", 15) }}Add</button>
+      </form>
+      <div class="card-b" style="border-top:1px solid var(--border)">
+        <label class="switch"><input type="checkbox" id="selfnotes" {{ "checked" if v["watch.imessage.allow_self_notes"] }}><span class="track"></span>Also read messages I send in these chats{{ src("watch.imessage.allow_self_notes") }}</label>
+        <div class="help" style="margin-top:4px">Lets you text yourself a to-do ("remind me to call the dentist") in a watched chat.</div>
+      </div>
+    </section>
+
+    <!-- REMINDERS -->
+    <form class="sec card" id="reminders" data-section>
+      <div class="card-h"><div><h2>Reminders & calendar</h2><p>Every reminder goes into one list, so they're all in one place on your iPhone.</p></div></div>
+      <div class="card-b fields">
+        {{ text("rules.reminder_list", "Reminders list", "All reminders land here. Created on the Mac if it doesn't exist (see toggle).") }}
+        {{ text("rules.default_alert_time", "Default alert time", "When a reminder has a day but no time.", "time") }}
+        {{ text("rules.calendars.default", "Calendar", "Appointments and pickups go on this calendar (it must already exist).") }}
+        {{ text("rules.calendars.default_duration_min", "Default event length (minutes)", "", "number", 'min="5" max="1440"') }}
+        {{ text("rules.calendars.alert_minutes_before", "Event alert (minutes before)", "Blank = no alert.", "number", 'min="0" max="10080"') }}
+        <label class="f">
+          <span>Review threshold{{ src("rules.review_threshold") }} <b class="num" id="thr">{{ "%.0f"|format(v["rules.review_threshold"] * 100) }}%</b></span>
+          <input type="range" min="0" max="1" step="0.05" data-path="rules.review_threshold" data-type="float" value="{{ v['rules.review_threshold'] }}" oninput="document.getElementById('thr').textContent=Math.round(this.value*100)+'%'">
+          <span class="help">Below this confidence, items wait in Review instead of being created.</span>
+        </label>
+        <div class="full">{{ toggle("rules.create_missing_lists", "Create the reminders list if it's missing") }}</div>
+      </div>
+      {{ foot("reminders") }}
+    </form>
+
+    <!-- MODEL -->
+    <form class="sec card" id="model" data-section>
+      <div class="card-h"><div><h2>Model</h2><p>The vLLM server on the Spark (OpenAI-compatible API).</p></div>
+        <div class="right"><button class="btn sm" type="button" id="testllm">{{ icon("zap", 14) }}Test connection</button></div></div>
+      <div class="card-b fields">
+        <div class="full" id="llmresult" hidden></div>
+        {{ text("llm.base_url", "Base URL", "e.g. http://spark:8000/v1", "url") }}
+        <label class="f"><span>Model{{ src("llm.model") }}</span><input type="text" list="models" data-path="llm.model" data-type="str" value="{{ v['llm.model'] }}"><datalist id="models"></datalist><span class="help">The served model name; "Test connection" lists them.</span></label>
+        {{ text("llm.temperature", "Temperature", "0 = deterministic (recommended).", "number", 'step="0.05" min="0" max="2"') }}
+        {{ text("llm.max_tokens", "Max tokens", "", "number", 'min="64" max="8192"') }}
+        {{ text("llm.timeout_s", "Timeout (seconds)", "One retry after a timeout.", "number", 'step="1" min="1" max="300"') }}
+        {{ secret("llm.api_key", "API key", "Only if vLLM was started with --api-key.") }}
+        <div class="full">{{ toggle("llm.disable_thinking", "Disable thinking", "Sends enable_thinking=false (Qwen3). Faster, and the JSON schema still guarantees valid output.") }}</div>
+      </div>
+      {{ foot("model") }}
+    </form>
+
+    <!-- ALERTS -->
+    <form class="sec card" id="alerts" data-section>
+      <div class="card-h"><div><h2>Alerts & dashboard</h2><p>Discord messages for review items, an offline Mac, or an unreachable model.</p></div>
+        <div class="right"><button class="btn sm" type="button" onclick="testAlert(this)">{{ icon("bell", 14) }}Send test</button></div></div>
+      <div class="card-b fields">
+        <div class="full">{{ secret("alerts.discord_webhook_url", "Discord webhook URL", "Server Settings → Integrations → Webhooks.") }}</div>
+        {{ text("alerts.heartbeat_timeout_s", "Mac offline after (seconds)", "No heartbeat for this long → alert.", "number", 'min="60" max="3600"') }}
+        {{ text("dashboard.public_url", "Dashboard URL", "Used for links in alerts (Tailscale name).", "url") }}
+      </div>
+      {{ foot("alerts") }}
+    </form>
+
+    <!-- MAIL -->
+    <form class="sec card" id="mail" data-section>
+      <div class="card-h"><div><h2>Mail</h2><p>IMAP IDLE listener — email from allowed senders becomes reminders and events.</p></div></div>
+      <div class="card-b fields">
+        <div class="full">{{ toggle("watch.mail.enabled", "Watch mail") }}</div>
+        {{ text("watch.mail.host", "IMAP server", "e.g. imap.gmail.com, imap.mail.me.com") }}
+        {{ text("watch.mail.port", "Port", "", "number", 'min="1" max="65535"') }}
+        {{ text("watch.mail.username", "Username") }}
+        {{ secret("watch.mail.password", "Password", "Use an app-specific password.") }}
+        {{ tags("watch.mail.folders", "Folders", "Usually just INBOX.", "Add folder…") }}
+        {{ tags("watch.mail.allow_senders", "Allowed senders", "Wildcards work: *@school.example.org", "Add sender…") }}
+        <div class="f full" style="display:grid;gap:6px">
+          <span style="font-weight:600;font-size:13px">Sender names{{ src("watch.mail.labels") }}</span>
+          <div id="labels" class="grid" style="gap:6px" data-value='{{ (v["watch.mail.labels"] or {})|tojson }}'></div>
+          <button type="button" class="btn sm ghost" style="justify-self:start" onclick="addLabel()">{{ icon("plus", 14) }}Add name</button>
+          <span class="help">Shown in the dashboard and in reminder notes, e.g. *@school.example.org → School.</span>
+        </div>
+      </div>
+      {{ foot("mail") }}
+    </form>
+
+    <!-- GENERAL -->
+    <form class="sec card" id="general" data-section>
+      <div class="card-h"><div><h2>General</h2><p>Dates like "tomorrow" and "tonight" are resolved in this timezone.</p></div></div>
+      <div class="card-b fields">
+        <label class="f"><span>Timezone{{ src("timezone") }}</span>
+          <input type="text" list="tzs" data-path="timezone" data-type="str" value="{{ v['timezone'] }}">
+          <datalist id="tzs">{% for z in ["America/Chicago","America/New_York","America/Denver","America/Phoenix","America/Los_Angeles","America/Anchorage","Pacific/Honolulu","Europe/London","UTC"] %}<option value="{{ z }}">{% endfor %}</datalist>
+        </label>
+        <div class="f"><span>Not editable here</span><span class="help">Agent token, database path and dashboard password stay in config.yaml / env vars.</span></div>
+      </div>
+      {{ foot("general") }}
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let SOURCES = {{ s.sources|tojson }};
+let PEOPLE = {{ allow|tojson }};
+
+/* ---------- helpers ---------- */
+function setPath(obj, path, value) {
+  const ks = path.split("."); let o = obj;
+  ks.slice(0, -1).forEach((k) => (o = o[k] ??= {}));
+  o[ks[ks.length - 1]] = value;
+}
+async function patch(body, okMsg) {
+  const d = await HA.api("PATCH", "/api/settings", body);
+  SOURCES = d.sources; paintSources();
+  if (okMsg) HA.toast(d.changed.length ? okMsg : "No changes");
+  return d;
+}
+function paintSources() {
+  document.querySelectorAll("[data-src]").forEach((el) => {
+    const s = SOURCES[el.dataset.src];
+    el.className = "src " + (s || "");
+    el.innerHTML = s === "dashboard" ? ` · edited here <button type="button" title="Use the config.yaml value again">reset</button>` : s === "file" ? " · config.yaml" : "";
+    const b = el.querySelector("button");
+    if (b) b.onclick = async (e) => { e.preventDefault(); e.stopPropagation();
+      try { await HA.api("POST", "/api/settings/reset", { path: el.dataset.src }); HA.toast("Reset to config.yaml"); setTimeout(() => location.reload(), 400); }
+      catch (err) { HA.toast(err.message, "bad"); } };
+  });
+}
+async function clearSecret(path) {
+  if (!confirm("Clear this saved value?")) return;
+  const body = {}; setPath(body, path, null);
+  try { await patch(body, "Cleared"); setTimeout(() => location.reload(), 400); } catch (e) { HA.toast(e.message, "bad"); }
+}
+
+/* ---------- people ---------- */
+const initials = (n) => (n || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+function renderPeople() {
+  const box = document.getElementById("people-list");
+  box.innerHTML = "";
+  if (!PEOPLE.length) { box.innerHTML = '<div class="empty">No one yet — add someone below. Until then, every message is ignored.</div>'; return; }
+  PEOPLE.forEach((p, i) => {
+    const row = document.createElement("div");
+    row.className = "person" + (p.enabled === false ? " off" : "");
+    row.innerHTML = `<span class="avatar"></span><div style="min-width:0"><div class="name"></div><div class="h"></div></div>
+      <div class="acts"><label class="switch" title="Watching"><input type="checkbox"><span class="track"></span></label>
+      <button class="btn sm icon ghost" title="Rename">{{ icon("pencil", 14) }}</button>
+      <button class="btn sm icon ghost danger" title="Remove">{{ icon("trash", 14) }}</button></div>`;
+    row.querySelector(".avatar").textContent = p.chat_id ? "#" : initials(p.label);
+    row.querySelector(".name").textContent = p.label || "(no name)";
+    row.querySelector(".h").textContent = p.handle || p.chat_id;
+    const cb = row.querySelector("input"); cb.checked = p.enabled !== false;
+    cb.onchange = () => savePeople(PEOPLE.map((q, j) => (j === i ? { ...q, enabled: cb.checked } : q)), cb.checked ? `Watching ${p.label}` : `Paused ${p.label}`);
+    const [ren, del] = row.querySelectorAll("button");
+    ren.onclick = () => { const n = prompt("Name", p.label || ""); if (n !== null) savePeople(PEOPLE.map((q, j) => (j === i ? { ...q, label: n } : q)), "Renamed"); };
+    del.onclick = () => { if (confirm(`Stop watching ${p.label || p.handle}?`)) savePeople(PEOPLE.filter((_, j) => j !== i), `Removed ${p.label || ""}`); };
+    box.append(row);
+  });
+}
+async function savePeople(next, msg) {
+  try {
+    await patch({ watch: { imessage: { allow: next } } }, msg + " · the Mac agent picks this up within a minute");
+    PEOPLE = next; renderPeople();
+    const b = document.getElementById("syncbadge"); if (b && b.textContent !== "Mac not syncing") { b.className = "badge b-info"; b.textContent = "Mac syncing…"; }
+  } catch (e) { HA.toast(e.message, "bad"); renderPeople(); }
+}
+document.getElementById("addperson").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const f = e.target, who = f.who.value.trim(), label = f.label.value.trim();
+  const entry = who.includes(";") || who.startsWith("chat") ? { chat_id: who, label, enabled: true } : { handle: who, label, enabled: true };
+  savePeople([...PEOPLE, entry], `Added ${label}`).then(() => f.reset());
+});
+document.getElementById("selfnotes").addEventListener("change", (e) =>
+  patch({ watch: { imessage: { allow_self_notes: e.target.checked } } }, "Saved").catch((err) => HA.toast(err.message, "bad")));
+
+/* ---------- tags + labels ---------- */
+function initTags(box) {
+  const input = box.querySelector("input");
+  const add = (val) => {
+    val = val.trim(); if (!val) return;
+    const t = document.createElement("span"); t.className = "tag"; t.dataset.v = val;
+    t.innerHTML = '<span></span><button type="button" aria-label="remove">{{ icon("x", 12) }}</button>';
+    t.querySelector("span").textContent = val;
+    t.querySelector("button").onclick = () => { t.remove(); dirty(box); };
+    box.insertBefore(t, input);
+  };
+  JSON.parse(box.dataset.value || "[]").forEach(add);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === ",") { e.preventDefault(); add(input.value); input.value = ""; dirty(box); }
+    if (e.key === "Backspace" && !input.value) { box.querySelector(".tag:last-of-type")?.remove(); dirty(box); }
+  });
+  input.addEventListener("blur", () => { if (input.value.trim()) { add(input.value); input.value = ""; dirty(box); } });
+  box.addEventListener("click", () => input.focus());
+}
+function addLabel(pattern = "", label = "") {
+  const row = document.createElement("div");
+  row.className = "row-flex"; row.style.flexWrap = "nowrap";
+  row.innerHTML = `<input type="text" placeholder="*@school.example.org" class="lp"><span class="faint">→</span><input type="text" placeholder="School" class="ll">
+    <button type="button" class="btn sm icon ghost danger">{{ icon("trash", 14) }}</button>`;
+  row.querySelector(".lp").value = pattern; row.querySelector(".ll").value = label;
+  row.querySelector("button").onclick = () => { row.remove(); dirty(row); };
+  document.getElementById("labels").append(row);
+}
+
+/* ---------- section forms ---------- */
+function dirty(el) {
+  const form = el.closest?.("form[data-section]") || document.querySelector("#mail");
+  form.classList.add("dirty");
+  form.querySelector(".status").textContent = "Unsaved changes";
+}
+function collect(form) {
+  const body = {};
+  form.querySelectorAll("[data-path]").forEach((el) => {
+    const t = el.dataset.type, path = el.dataset.path;
+    if (t === "list") return setPath(body, path, [...el.querySelectorAll(".tag")].map((x) => x.dataset.v));
+    if (t === "bool") return setPath(body, path, el.checked);
+    if (t === "secret") { if (el.value) setPath(body, path, el.value); return; }
+    const raw = el.value.trim();
+    if (t === "int") return setPath(body, path, raw === "" ? null : parseInt(raw, 10));
+    if (t === "float") return setPath(body, path, raw === "" ? null : parseFloat(raw));
+    setPath(body, path, raw);
+  });
+  if (form.id === "mail") {
+    const labels = {};
+    form.querySelectorAll("#labels .row-flex").forEach((r) => { const p = r.querySelector(".lp").value.trim(); if (p) labels[p] = r.querySelector(".ll").value.trim(); });
+    setPath(body, "watch.mail.labels", labels);
+  }
+  return body;
+}
+document.querySelectorAll("form[data-section]").forEach((form) => {
+  form.addEventListener("input", () => dirty(form));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector("button[type=submit]"); HA.busy(btn, true);
+    try {
+      await patch(collect(form), "Saved");
+      form.classList.remove("dirty"); form.querySelector(".status").textContent = "All changes saved";
+      form.querySelectorAll("[data-type=secret]").forEach((el) => { if (el.value) { el.value = ""; el.placeholder = "•••••••• saved — type to replace"; } });
+    } catch (err) { HA.toast(err.message, "bad"); form.querySelector(".status").textContent = err.message; }
+    finally { HA.busy(btn, false); }
+  });
+});
+
+/* ---------- model test ---------- */
+document.getElementById("testllm").addEventListener("click", async (e) => {
+  const btn = e.currentTarget, out = document.getElementById("llmresult"), f = document.getElementById("model");
+  HA.busy(btn, true); out.hidden = false; out.innerHTML = '<div class="notice info"><span class="body">Connecting…</span></div>';
+  const body = { base_url: f.querySelector('[data-path="llm.base_url"]').value, model: f.querySelector('[data-path="llm.model"]').value,
+                 api_key: f.querySelector('[data-path="llm.api_key"]').value || null };
+  try {
+    const d = await HA.api("POST", "/api/settings/test-llm", body);
+    document.getElementById("models").innerHTML = d.models.map((m) => `<option value="${m.replace(/"/g, "&quot;")}">`).join("");
+    out.innerHTML = `<div class="notice ${d.model_found === false ? "warn" : "ok"}"><span class="body"><b>Connected</b> in ${d.latency_ms} ms. `
+      + (d.model_found === false ? "The model name isn't served there — pick one: " : "Served models: ") + "<span class='mono'></span></span></div>";
+    out.querySelector(".mono").textContent = d.models.join(", ") || "(none)";
+  } catch (err) {
+    out.innerHTML = '<div class="notice bad"><span class="body"></span></div>'; out.querySelector(".body").textContent = err.message;
+  } finally { HA.busy(btn, false); }
+});
+async function testAlert(btn) {
+  HA.busy(btn, true);
+  try { await HA.api("POST", "/api/system/test-alert"); HA.toast("Test alert sent — check Discord"); }
+  catch (e) { HA.toast(e.message + " (save the webhook first)", "bad"); } finally { HA.busy(btn, false); }
+}
+
+/* ---------- init ---------- */
+renderPeople();
+document.querySelectorAll(".tags").forEach(initTags);
+Object.entries(JSON.parse(document.getElementById("labels").dataset.value)).forEach(([p, l]) => addLabel(p, l));
+paintSources();
+const subLinks = [...document.querySelectorAll(".subnav a")];
+const obs = new IntersectionObserver((ents) => ents.forEach((en) => { if (en.isIntersecting) subLinks.forEach((a) => a.classList.toggle("on", a.hash === "#" + en.target.id)); }), { rootMargin: "-40% 0px -55% 0px" });
+document.querySelectorAll(".sec").forEach((s) => obs.observe(s));
+HA.on((d) => { if (d.type === "heartbeat") fetch("/api/health").then((r) => r.json()).then((h) => {
+  const b = document.getElementById("syncbadge"); if (!b || h.agent.allowlist_version == null) return;
+  fetch("/api/settings").then((r) => r.json()).then((s) => { if (h.agent.allowlist_version === s.version) { b.className = "badge b-ok"; b.textContent = "Mac synced"; } });
+}); });
+</script>
+{% endblock %}

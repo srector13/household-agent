@@ -125,11 +125,24 @@ public final class BrainClient: Sendable {
         }
     }
 
-    public func heartbeat(_ hb: Heartbeat) async throws {
+    /// POST /api/agent/heartbeat. Returns the brain's settings_version, if it reports one.
+    @discardableResult
+    public func heartbeat(_ hb: Heartbeat) async throws -> HeartbeatAck {
         let body = try Wire.encoder().encode(hb)
         let (data, status) = try await send(request("api/agent/heartbeat", method: "POST", body: body))
         guard (200..<300).contains(status) else {
             throw BrainError("heartbeat: HTTP \(status): \(Self.snippet(data))", status: status)
         }
+        return (try? Wire.decoder().decode(HeartbeatAck.self, from: data)) ?? HeartbeatAck(ok: true, settingsVersion: nil)
+    }
+
+    /// GET /api/agent/config — the brain-managed allowlist. Throws BrainError(status: 404) on a
+    /// brain that predates the endpoint.
+    public func fetchAgentConfig() async throws -> RemoteAgentConfig {
+        let (data, status) = try await send(request("api/agent/config", method: "GET"))
+        guard (200..<300).contains(status) else {
+            throw BrainError("config: HTTP \(status): \(Self.snippet(data))", status: status)
+        }
+        return try Wire.decoder().decode(RemoteAgentConfig.self, from: data)
     }
 }

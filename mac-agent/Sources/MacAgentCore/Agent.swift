@@ -9,8 +9,15 @@ public actor Agent {
     private let executor: CommandExecutor
     private let checkpoint: Checkpoint
     private let buffer: OfflineBuffer
-    private let builder: EventBuilder
+    private var builder: EventBuilder
     private let backfill: Int?
+    private let syncedConfigURL: URL
+    /// Allowlist synced from the brain (only used when config.syncAllowlist).
+    private var allowlist: SyncedAllowlist?
+    /// True once the brain answered 404 for /api/agent/config (older brain): fall back to the local
+    /// prefilter so events are not held forever.
+    private var syncUnsupported = false
+    private var holdLogged = false
     private let startedAt = Date()
 
     private var messagesDB: MessagesDatabase?
@@ -25,6 +32,7 @@ public actor Agent {
 
     public init(config: AgentConfig, client: BrainClient, store: ItemStore,
                 stateURL: URL = AgentPaths.state, bufferURL: URL = AgentPaths.buffer,
+                syncedConfigURL: URL = AgentPaths.syncedConfig,
                 backfill: Int? = nil, timeZone: TimeZone = .current) {
         self.config = config
         self.client = client
@@ -32,8 +40,72 @@ public actor Agent {
         self.executor = CommandExecutor(store: store)
         self.checkpoint = Checkpoint(url: stateURL)
         self.buffer = OfflineBuffer(url: bufferURL)
-        self.builder = EventBuilder(config: config, timeZone: timeZone)
         self.backfill = backfill
+        self.syncedConfigURL = syncedConfigURL
+        let cached = config.syncAllowlist ? SyncedAllowlist.load(from: syncedConfigURL) : nil
+        self.allowlist = cached
+        self.builder = EventBuilder(config: config, timeZone: timeZone,
+                                    prefilter: config.syncAllowlist ? .synced(cached) : .local)
+    }
+
+    // MARK: Allowlist sync
+
+    /// The allowlist currently in force at send time, or nil when nothing should be filtered here
+    /// (sync off with an empty local list is handled by the builder's `.local` prefilter).
+    private var usesSyncedFilter: Bool { config.syncAllowlist && !syncUnsupported }
+
+    public var allowlistVersion: Int? { usesSyncedFilter ? allowlist?.settingsVersion : nil }
+
+    public var allowlistSize: Int {
+        usesSyncedFilter ? (allowlist?.size ?? 0) : config.allowHandles.count
+    }
+
+    /// Applies a config fetched from the brain: caches it on disk and wakes the sender so held
+    /// events are re-evaluated.
+    public func applyRemoteConfig(_ remote: RemoteAgentConfig) async {
+        let list = SyncedAllowlist(remote: remote, syncedAt: ISO8601DateFormatter().string(from: Date()))
+        let changed = list.settingsVersion != allowlist?.settingsVersion || list.handles != allowlist?.handles
+            || list.chatIds != allowlist?.chatIds
+        allowlist = list
+        syncUnsupported = false
+        builder.prefilter = .synced(list)
+        do { try list.save(to: syncedConfigURL) } catch { Log.warn("could not cache synced allowlist: \(error)") }
+        if changed {
+            Log.info("allowlist synced: v\(list.settingsVersion) (\(list.handles.count) handle(s), \(list.chatIds.count) chat(s))")
+        }
+        holdLogged = false
+        await sendWakeup.signal()
+    }
+
+    /// GET /api/agent/config and apply it. Returns true on success. No-op when sync is off.
+    @discardableResult
+    public func syncAllowlist() async -> Bool {
+        guard config.syncAllowlist else { return false }
+        do {
+            await applyRemoteConfig(try await client.fetchAgentConfig())
+            return true
+        } catch let e as BrainError where e.status == 404 {
+            if !syncUnsupported {
+                Log.warn("brain has no /api/agent/config (older version); using local allow_handles until it does")
+                syncUnsupported = true
+                builder.prefilter = .local
+                await sendWakeup.signal()
+            }
+            return false
+        } catch {
+            Log.warn("allowlist sync failed: \(error)\(allowlist.map { "; keeping cached v\($0.settingsVersion)" } ?? "")")
+            return false
+        }
+    }
+
+    /// Send-time decision for the outbox head.
+    enum SendDecision { case send, hold, drop }
+
+    func sendDecision(for item: BufferedEvent) -> SendDecision {
+        guard usesSyncedFilter else { return .send }  // local prefilter already applied at scan time
+        guard let list = allowlist else { return .hold }
+        return list.allows(handle: item.event.senderHandle, chatIdentifier: item.chatIdentifier,
+                           chatGUID: item.event.chatId) ? .send : .drop
     }
 
     // MARK: Database / checkpoint
@@ -113,7 +185,7 @@ public actor Agent {
                             let ctx = (try? db.context(chatRowid: chat, before: row.rowid, limit: config.contextCount)) ?? []
                             event.recentContext = builder.formatContext(ctx)
                         }
-                        batch.append(BufferedEvent(rowid: row.rowid, event: event))
+                        batch.append(BufferedEvent(rowid: row.rowid, event: event, chatIdentifier: row.chatIdentifier))
                     }
                 }
                 try buffer.append(batch)
@@ -138,6 +210,21 @@ public actor Agent {
         isFlushing = true
         defer { isFlushing = false }
         while let head = buffer.first {
+            switch sendDecision(for: head) {
+            case .hold:
+                if !holdLogged {
+                    Log.info("holding \(buffer.count) event(s) until the allowlist is synced from the brain")
+                    holdLogged = true
+                }
+                return true  // nothing deliverable now; a successful sync wakes the sender
+            case .drop:
+                // Never log the handle or text of a non-allowlisted message.
+                Log.info("dropping ROWID \(head.rowid): not on the synced allowlist")
+                if !advancePast(head) { return false }
+                continue
+            case .send:
+                break
+            }
             let outcome = await client.postEvent(head.event)
             switch outcome {
             case .consumed(let status):
@@ -151,20 +238,26 @@ public actor Agent {
                 Log.warn("brain unreachable (\(why)); \(buffer.count) event(s) buffered")
                 return false
             }
-            do {
-                guard buffer.first?.event.eventId == head.event.eventId else { continue }
-                try buffer.popFirst()
-                if let next = buffer.first {
-                    try checkpoint.markAcked(next.rowid - 1)
-                } else {
-                    try checkpoint.markAcked(max(head.rowid, checkpoint.scanPosition))
-                }
-            } catch {
-                Log.error("failed to update outbox/checkpoint: \(error)")
-                return false
-            }
+            if !advancePast(head) { return false }
         }
         return true
+    }
+
+    /// Pops `head` from the outbox and advances the acked checkpoint. Returns false on I/O failure.
+    private func advancePast(_ head: BufferedEvent) -> Bool {
+        do {
+            guard buffer.first?.event.eventId == head.event.eventId else { return true }
+            try buffer.popFirst()
+            if let next = buffer.first {
+                try checkpoint.markAcked(next.rowid - 1)
+            } else {
+                try checkpoint.markAcked(max(head.rowid, checkpoint.scanPosition))
+            }
+            return true
+        } catch {
+            Log.error("failed to update outbox/checkpoint: \(error)")
+            return false
+        }
     }
 
     // MARK: Commands
@@ -212,12 +305,17 @@ public actor Agent {
             remindersOk: perms.reminders,
             calendarOk: perms.calendar,
             uptimeS: Int(Date().timeIntervalSince(startedAt)),
-            bufferedEvents: buffer.count
+            bufferedEvents: buffer.count,
+            allowlistVersion: allowlistVersion,
+            allowlistSize: allowlistSize
         )
     }
 
     public func sendHeartbeat() async throws {
-        try await client.heartbeat(await makeHeartbeat())
+        let ack = try await client.heartbeat(await makeHeartbeat())
+        if config.syncAllowlist, let v = ack.settingsVersion, v != allowlist?.settingsVersion || syncUnsupported {
+            await syncAllowlist()
+        }
     }
 
     // MARK: Loops
@@ -287,10 +385,23 @@ public actor Agent {
         }
     }
 
+    /// Fallback refresh in case a heartbeat-driven sync is missed.
+    private func configSyncLoop() async {
+        while !Task.isCancelled {
+            await sleepSeconds(600)
+            await syncAllowlist()
+        }
+    }
+
     /// Runs forever.
     public func run() async {
         Log.info("mac-agent \(AgentInfo.version) starting; brain=\(config.brainURL) chat.db=\(config.chatDBURL.path)")
+        if config.syncAllowlist {
+            if let a = allowlist { Log.info("using cached allowlist v\(a.settingsVersion) until the brain answers") }
+            await syncAllowlist()
+        }
         await withTaskGroup(of: Void.self) { group in
+            if self.config.syncAllowlist { group.addTask { await self.configSyncLoop() } }
             group.addTask { await self.scanLoop() }
             group.addTask { await self.sendLoop() }
             group.addTask { await self.commandLoop() }
@@ -300,6 +411,7 @@ public actor Agent {
 
     /// Single pass for debugging (`--once`).
     public func runOnce() async {
+        if config.syncAllowlist { await syncAllowlist() }
         let queued = scan()
         Log.info("once: queued \(queued) event(s)")
         let delivered = await flush()

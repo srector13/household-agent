@@ -25,6 +25,8 @@ public enum AgentPaths {
     public static var defaultConfig: URL { supportDir.appendingPathComponent("config.json") }
     public static var state: URL { supportDir.appendingPathComponent("state.json") }
     public static var buffer: URL { supportDir.appendingPathComponent("outbox.jsonl") }
+    /// Last allowlist synced from the brain (GET /api/agent/config).
+    public static var syncedConfig: URL { supportDir.appendingPathComponent("synced_config.json") }
     public static var chatDB: URL { home.appendingPathComponent("Library/Messages/chat.db") }
 
     public static func ensureDirectory(_ url: URL) throws {

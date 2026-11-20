@@ -6,14 +6,17 @@ import XCTest
 final class AgentTests: XCTestCase {
     let wife = "+17855550000"
 
-    func makeAgent(dir: URL, chatDB: URL, backfill: Int? = nil) -> Agent {
-        var cfg = AgentConfig(brainURL: "http://127.0.0.1:9", allowHandles: [wife], labels: [wife: "Wife"])
+    /// Legacy tests use the local `allow_handles` prefilter (sync off).
+    func makeAgent(dir: URL, chatDB: URL, backfill: Int? = nil, sync: Bool = false) -> Agent {
+        var cfg = AgentConfig(brainURL: "http://127.0.0.1:9", syncAllowlist: sync,
+                              allowHandles: sync ? [] : [wife], labels: [wife: "Wife"])
         cfg.chatDBPath = chatDB.path
         // Port 9 (discard) on localhost: connection refused → "brain unreachable".
         let client = BrainClient(baseURL: URL(string: cfg.brainURL)!, token: "t")
         return Agent(config: cfg, client: client, store: FakeItemStore(),
                      stateURL: dir.appendingPathComponent("state.json"),
-                     bufferURL: dir.appendingPathComponent("outbox.jsonl"), backfill: backfill)
+                     bufferURL: dir.appendingPathComponent("outbox.jsonl"),
+                     syncedConfigURL: dir.appendingPathComponent("synced_config.json"), backfill: backfill)
     }
 
     func testFirstRunSkipsHistoryThenBuffersWhileBrainDown() async throws {

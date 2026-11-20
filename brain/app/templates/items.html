@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Created items · Household Agent{% endblock %}
+{% block heading %}Created items{% endblock %}
+{% block subheading %}<div class="sub">Everything the agent has put in Reminders and Calendar (and not undone)</div>{% endblock %}
+{% block content %}
+<div class="grid g-main">
+  <div class="card">
+    <div class="card-h"><h2>All items</h2><span class="badge b-muted plain">{{ items|length }}</span></div>
+    <div class="card-b flush list">
+      {% for c in items %}{% set p = c.payload %}
+      <div class="erow" style="grid-template-columns:36px minmax(0,1fr) auto">
+        <span class="avatar" style="background:{{ 'var(--info-soft)' if c.op == 'create_event' else 'var(--ok-soft)' }};color:{{ 'var(--info)' if c.op == 'create_event' else 'var(--ok)' }}">{{ icon("calendar" if c.op == "create_event" else "check-square", 17) }}</span>
+        <a href="/events/{{ c.event_id|urlencode }}" style="min-width:0">
+          <div class="top"><span class="who">{{ p.title }}</span></div>
+          <div class="when">{% if c.op == "create_reminder" %}{{ p.list }}{% if p.due %} · due {{ p.due }}{% if p.due_time %} {{ p.due_time }}{% endif %}{% endif %}{% else %}{{ p.calendar }} · {% if p.all_day %}{{ p.start|localtime("%a %b %-d") }}{% else %}{{ p.start|localtime }}{% endif %}{% endif %}
+            · from {{ c.sender_label or "?" }} · <span data-ago="{{ c.completed_at }}"></span></div>
+        </a>
+        <button class="btn sm ghost danger" title="Remove from Reminders/Calendar" data-id="{{ c.event_id }}" onclick="HA.action(this, 'undo', this.dataset.id, {confirm: 'Remove the items created from this message?', done: 'Removing from your Mac…', onDone: () => this.closest('.erow').classList.add('gone')})">{{ icon("undo", 15) }}<span>Undo</span></button>
+      </div>
+      {% else %}<div class="empty">{{ icon("check-square", 32) }}<div>Nothing created yet.</div></div>{% endfor %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-h"><h2>Next 14 days</h2></div>
+    <div class="card-b flush list">
+      {% for u in upcoming %}
+      <a class="up" href="/events/{{ u.event_id|urlencode }}">
+        <div class="day"><span>{{ u.when.strftime("%a") }}</span><b>{{ u.when.day }}</b></div>
+        <div style="min-width:0"><div class="t">{{ u.title }}</div><div class="m">{% if not u.all_day %}{{ u.when.strftime("%-I:%M %p") }} · {% endif %}{{ u.where }}</div></div>
+      </a>
+      {% else %}<div class="empty" style="padding:24px">Nothing dated in the next two weeks.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -44,7 +44,7 @@ def _local(iso: str, cfg: Config, date_only: bool) -> str:
 def _cmd_view(cmd: dict[str, Any], cfg: Config) -> dict[str, Any]:
     p = cmd["payload"]
     if cmd["op"] == "create_reminder":
-        return {"type": "create_reminder", "title": p["title"], "list": p["list"], "due_date": p["due"],
+        return {"type": "create_reminder", "title": p["title"], "due_date": p["due"],
                 "due_time": p["due_time"]}
     return {"type": "create_event", "title": p["title"], "all_day": p["all_day"],
             "start": _local(p["start"], cfg, p["all_day"]), "end": _local(p["end"], cfg, p["all_day"])}
@@ -56,7 +56,7 @@ def _matches(exp: dict[str, Any], got: dict[str, Any]) -> list[str]:
         return [f"type {got['type']} != {exp['type']}"]
     if not any(t.lower() in got["title"].lower() for t in exp["title_any"]):
         problems.append(f"title {got['title']!r} lacks any of {exp['title_any']}")
-    for k in ("list", "due_date", "due_time", "start", "end", "all_day"):
+    for k in ("due_date", "due_time", "start", "end", "all_day"):
         if k in exp and got.get(k) != exp[k]:
             problems.append(f"{k} {got.get(k)!r} != {exp[k]!r}")
     return problems

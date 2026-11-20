@@ -4,10 +4,14 @@ import Foundation
 public struct BufferedEvent: Codable, Equatable, Sendable {
     public var rowid: Int64
     public var event: InboundEvent
+    /// chat.db `chat.chat_identifier`, kept for send-time allowlist matching (the event itself
+    /// carries the chat GUID). Optional so outbox lines written by older versions still load.
+    public var chatIdentifier: String?
 
-    public init(rowid: Int64, event: InboundEvent) {
+    public init(rowid: Int64, event: InboundEvent, chatIdentifier: String? = nil) {
         self.rowid = rowid
         self.event = event
+        self.chatIdentifier = chatIdentifier
     }
 }
 

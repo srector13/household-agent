@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% set a = h.agent %}
+{% block title %}System · Household Agent{% endblock %}
+{% block heading %}System{% endblock %}
+{% block subheading %}<div class="sub">The plumbing: every component, queue and alert</div>{% endblock %}
+{% block actions %}
+<button class="btn sm" onclick="sysAction(this,'/api/system/test-alert','Test alert sent to Discord')">{{ icon("bell", 15) }}<span>Test alert</span></button>
+<button class="btn sm" onclick="sysAction(this,'/api/system/backup','Backup written')">{{ icon("database", 15) }}<span>Back up now</span></button>
+{% endblock %}
+{% block content %}
+{% macro yes(v) %}{% if v %}<span class="badge b-ok">OK</span>{% else %}<span class="badge b-bad">missing</span>{% endif %}{% endmacro %}
+<div class="stack">
+  <div class="grid g2">
+    <div class="card">
+      <div class="card-h"><span class="dot {{ 'ok' if a.online else 'bad' }}"></span><h2>Mac agent</h2><div class="right faint" style="font-size:12.5px">{% if a.agent_version %}v{{ a.agent_version }}{% endif %}</div></div>
+      <div class="card-b">
+        {% if a.agent_version %}
+        <dl class="kv">
+          <dt>Last heartbeat</dt><dd>{{ a.last_seen_s_ago }} s ago{% if not a.online %} <span class="badge b-bad">offline</span>{% endif %}</dd>
+          <dt>Full Disk Access</dt><dd>{{ yes(a.fda_ok) }}</dd>
+          <dt>Reminders</dt><dd>{{ yes(a.reminders_ok) }}</dd>
+          <dt>Calendar</dt><dd>{{ yes(a.calendar_ok) }}</dd>
+          <dt>Last ROWID</dt><dd class="mono">{{ a.last_rowid }}</dd>
+          <dt>Outbox</dt><dd>{{ a.buffered_events }} buffered</dd>
+          <dt>Allowlist sync</dt><dd>{% if a.allowlist_version is none %}<span class="badge b-warn">not synced</span>{% elif a.allowlist_version == settings_version %}<span class="badge b-ok">v{{ a.allowlist_version }} · {{ a.allowlist_size }} entries</span>{% else %}<span class="badge b-info">v{{ a.allowlist_version }} → v{{ settings_version }} pending</span>{% endif %}</dd>
+          <dt>Uptime</dt><dd>{{ (a.uptime_s / 3600)|round(1) }} h</dd>
+        </dl>
+        {% else %}<div class="muted">No heartbeat yet. Install the agent on the Mac (<span class="mono">mac-agent/scripts/install.sh</span>) and point it at <span class="mono">{{ cfg.dashboard.public_url }}</span>.</div>{% endif %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><span class="dot {{ 'ok' if h.llm.reachable else 'bad' }}"></span><h2>Model (vLLM)</h2><div class="right"><a class="link" href="/settings#model">Configure {{ icon("chevron-right", 14) }}</a></div></div>
+      <div class="card-b"><dl class="kv">
+        <dt>Endpoint</dt><dd class="mono">{{ h.llm.base_url }}</dd>
+        <dt>Model</dt><dd class="mono">{{ h.llm.model }}</dd>
+        <dt>Ping</dt><dd>{{ h.llm.latency_ms or "—" }} ms{% if h.llm.fail_streak %} · <span class="badge b-bad">{{ h.llm.fail_streak }} failed</span>{% endif %}</dd>
+        <dt>Extraction</dt><dd>p50 {{ latency.p50 or "—" }} ms · p90 {{ latency.p90 or "—" }} ms <span class="faint">({{ latency.n }} in 7d)</span></dd>
+        <dt>Prompt</dt><dd>{{ prompt.version }} · thinking {{ "off" if cfg.llm.disable_thinking else "on" }} · temp {{ cfg.llm.temperature }}</dd>
+        {% if h.llm.last_error %}<dt>Last error</dt><dd style="color:var(--bad)">{{ h.llm.last_error }}</dd>{% endif %}
+      </dl></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><span class="dot {{ 'ok' if h.mail.state == 'idle' else 'bad' if h.mail.state == 'error' else '' }}"></span><h2>Mail listener</h2><div class="right"><a class="link" href="/settings#mail">Configure {{ icon("chevron-right", 14) }}</a></div></div>
+      <div class="card-b"><dl class="kv">
+        <dt>State</dt><dd>{{ h.mail.state }}{% if not cfg.watch.mail.enabled %} <span class="faint">(enable in Settings)</span>{% endif %}</dd>
+        {% for f, st in (h.mail.folders or {}).items() %}<dt>{{ f }}</dt><dd>{{ st.state }}{% if st.error %} — <span style="color:var(--bad)">{{ st.error }}</span>{% endif %}</dd>{% endfor %}
+        {% if h.mail.last_message_at %}<dt>Last mail</dt><dd>{{ h.mail.last_message_at|localtime }}</dd>{% endif %}
+        <dt>Allowed senders</dt><dd class="mono">{{ cfg.watch.mail.allow_senders|join(", ") or "—" }}</dd>
+      </dl></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><span class="dot ok"></span><h2>Brain</h2><div class="right faint" style="font-size:12.5px">v{{ version }}</div></div>
+      <div class="card-b"><dl class="kv">
+        <dt>Uptime</dt><dd>{{ (h.brain_uptime_s / 3600)|round(1) }} h</dd>
+        <dt>Database</dt><dd>{{ ((dbinfo.size_bytes or 0) / 1048576)|round(2) }} MB · {{ dbinfo.counts.events }} events · {{ dbinfo.counts.trace }} trace rows</dd>
+        <dt>Last backup</dt><dd>{% if last_backup %}{{ last_backup.at|localtime }}{% else %}never{% endif %}</dd>
+        <dt>Settings</dt><dd>v{{ settings_version }} · allowlist {{ agent_cfg.allow.handles|length + agent_cfg.allow.chat_ids|length }} active</dd>
+        <dt>Discord</dt><dd>{{ "configured" if cfg.alerts.discord_webhook_url else "not configured" }}</dd>
+      </dl></div>
+    </div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <div class="card-h"><h2>Funnel</h2><span class="faint" style="font-size:12.5px">last 24 hours</span></div>
+      <div class="card-b funnel">
+        {% set mx = [funnel.received, 1]|max %}
+        {% for label, key, cls in [("Received","received",""),("Filtered by gate","gated","muted"),("Read by model","to_llm",""),("Actionable","actionable",""),("Created","created","ok"),("Needs review","review","warn"),("Failed","failed","bad")] %}
+        <div class="fbar"><span>{{ label }}</span><div class="track"><div class="fill {{ cls }}" style="width:{{ (100 * funnel[key] / mx)|round(1) }}%"></div></div><b>{{ funnel[key] }}</b></div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>Command queue</h2><span class="badge b-muted plain">{{ commands|length }}</span></div>
+      <div class="card-b flush scroll-x">
+        {% if commands %}
+        <table class="t"><tr><th>Op</th><th>Item</th><th>Status</th><th>Tries</th></tr>
+          {% for c in commands %}<tr>
+            <td class="mono">{{ c.op }}</td>
+            <td><a class="link" href="/events/{{ c.event_id|urlencode }}">{{ c.payload.title or c.payload.kind }}</a></td>
+            <td><span class="badge b-{{ {'held':'warn','sent':'info'}.get(c.status, 'muted') }}">{{ c.status }}</span>{% if c.sent_at %}<div class="faint" style="font-size:11.5px" data-ago="{{ c.sent_at }}"></div>{% endif %}</td>
+            <td class="num">{{ c.attempts }}</td></tr>{% endfor %}
+        </table>
+        {% else %}<div class="empty" style="padding:28px">{{ icon("layers", 28) }}<div>Queue is empty — the Mac is caught up.</div></div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <div class="card-h"><h2>Alerts</h2><span class="faint" style="font-size:12.5px">sent to Discord</span></div>
+      <div class="card-b flush list">
+        {% for al in alerts %}
+        <div class="erow" style="grid-template-columns:auto minmax(0,1fr)"><span class="dot {{ 'ok' if '✅' in al.message else 'bad' if '🔴' in al.message else 'warn' }}" style="margin-top:7px"></span>
+          <div><div style="white-space:pre-wrap">{{ al.message }}</div><div class="when">{{ al.created_at|localtime }} · {{ al.kind }}{% if not al.delivered %} · not delivered{% endif %}</div></div></div>
+        {% else %}<div class="empty" style="padding:28px">No alerts.</div>{% endfor %}
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><h2>Settings changes</h2><div class="right"><a class="link" href="/settings">Settings {{ icon("chevron-right", 14) }}</a></div></div>
+        <div class="card-b flush scroll-x">
+          {% if history %}
+          <table class="t">{% for r in history %}<tr><td class="mono" style="white-space:nowrap">{{ r.path }}</td>
+            <td style="word-break:break-word">{% if r.action == "reset" %}<span class="faint">reset to file</span>{% else %}{{ r.after if r.after is string else r.after|tojson }}{% endif %}</td>
+            <td class="faint" style="white-space:nowrap" data-ago="{{ r.at }}"></td></tr>{% endfor %}</table>
+          {% else %}<div class="empty" style="padding:24px">No changes made from the dashboard yet.</div>{% endif %}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Extraction prompt</h2><span class="badge b-accent plain">{{ prompt.version }}</span></div>
+        <div class="card-b grid" style="gap:8px">
+          <p class="help" style="margin:0">Edit <span class="mono">brain/app/prompts/extract.md</span> and restart to change it; bump the version so traces show which prompt ran.</p>
+          <details><summary class="link">System prompt</summary><pre style="margin-top:6px">{{ prompt.system }}</pre></details>
+          <details><summary class="link">User template</summary><pre style="margin-top:6px">{{ prompt.user }}</pre></details>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function sysAction(btn, url, ok) {
+  HA.busy(btn, true);
+  try { const d = await HA.api("POST", url); HA.toast(d.path ? `${ok}: ${d.path}` : ok); }
+  catch (e) { HA.toast(e.message, "bad"); } finally { HA.busy(btn, false); }
+}
+</script>
+{% endblock %}

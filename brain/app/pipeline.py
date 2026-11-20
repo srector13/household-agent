@@ -178,7 +178,11 @@ class Pipeline:
         if not held:
             raise ActionError("nothing to approve — use “Reprocess with edits” to add items")
         for c in held:
-            self.db.update_command(c["command_id"], status="pending")
+            fields: dict[str, Any] = {"status": "pending"}
+            if c["op"] == "create_reminder" and c["payload"].get("list") != self.cfg.rules.reminder_list:
+                # The list may have been changed in Settings while this waited for review.
+                fields["payload"] = json.dumps({**c["payload"], "list": self.cfg.rules.reminder_list})
+            self.db.update_command(c["command_id"], **fields)
         self.db.trace(event_id, "review", {"decision": "approved", "command_ids": [c["command_id"] for c in held]})
         self._set(event_id, status=m.QUEUED, reason="approved")
         await self.queue.wake()

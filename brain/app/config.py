@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class LLMConfig(BaseModel):
@@ -24,6 +25,18 @@ class AllowEntry(BaseModel):
     handle: str | None = None
     chat_id: str | None = None
     label: str | None = None
+    enabled: bool = True
+
+    @model_validator(mode="after")
+    def _check(self):
+        self.handle = (self.handle or "").strip() or None
+        self.chat_id = (self.chat_id or "").strip() or None
+        self.label = (self.label or "").strip() or None
+        if not self.handle and not self.chat_id:
+            raise ValueError("each entry needs a phone number, email or chat id")
+        if self.handle and "@" not in self.handle and len(re.sub(r"\D", "", self.handle)) < 7:
+            raise ValueError(f"{self.handle!r} doesn't look like a phone number or email")
+        return self
 
 
 class IMessageWatch(BaseModel):
@@ -47,16 +60,6 @@ class WatchConfig(BaseModel):
     mail: MailWatch = Field(default_factory=MailWatch)
 
 
-class ListRoute(BaseModel):
-    match: list[str]
-    list: str
-
-
-class ListsConfig(BaseModel):
-    default: str = "Household"
-    routes: list[ListRoute] = Field(default_factory=list)
-
-
 class CalendarsConfig(BaseModel):
     default: str = "Family"
     default_duration_min: int = 60
@@ -65,17 +68,29 @@ class CalendarsConfig(BaseModel):
 
 class RulesConfig(BaseModel):
     default_alert_time: str = "16:00"
-    review_threshold: float = 0.75
+    review_threshold: float = Field(0.75, ge=0, le=1)
+    reminder_list: str = Field("Household", min_length=1)  # every reminder goes to this one list
     create_missing_lists: bool = True
-    lists: ListsConfig = Field(default_factory=ListsConfig)
     calendars: CalendarsConfig = Field(default_factory=CalendarsConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_lists(cls, data):
+        # v0.1 had `lists: {default, routes}`; routing is gone, the default list is the one list.
+        if isinstance(data, dict) and "lists" in data:
+            data = dict(data)
+            old = data.pop("lists") or {}
+            if "reminder_list" not in data and isinstance(old, dict) and old.get("default"):
+                data["reminder_list"] = old["default"]
+        return data
 
     @field_validator("default_alert_time")
     @classmethod
     def _hhmm(cls, v: str) -> str:
-        h, m = v.split(":")
-        assert 0 <= int(h) < 24 and 0 <= int(m) < 60
-        return f"{int(h):02d}:{int(m):02d}"
+        m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*", v or "")
+        if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+            raise ValueError("use a 24-hour time like 16:00")
+        return f"{int(m.group(1)):02d}:{m.group(2)}"
 
 
 class AlertsConfig(BaseModel):
@@ -108,13 +123,18 @@ class Config(BaseModel):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
 
+    @field_validator("timezone")
+    @classmethod
+    def _tz(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except Exception as e:  # ZoneInfoNotFoundError is a KeyError, not a ValueError
+            raise ValueError(f"unknown timezone {v!r}") from e
+        return v
+
     @property
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
-
-    def known_lists(self) -> list[str]:
-        names = [self.rules.lists.default] + [r.list for r in self.rules.lists.routes]
-        return list(dict.fromkeys(names))
 
 
 ENV_OVERRIDES: dict[str, tuple[str, ...]] = {
@@ -136,7 +156,8 @@ def _set_path(d: dict[str, Any], path: tuple[str, ...], value: str) -> None:
     d[path[-1]] = value
 
 
-def load_config(path: str | os.PathLike | None = None) -> Config:
+def load_raw(path: str | os.PathLike | None = None) -> dict[str, Any]:
+    """config.yaml + env overrides, as a plain dict (the base the dashboard's edits sit on)."""
     path = path or os.environ.get("HA_CONFIG", "/config/config.yaml")
     raw: dict[str, Any] = {}
     p = Path(path)
@@ -145,4 +166,8 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
     for env, keypath in ENV_OVERRIDES.items():
         if os.environ.get(env):
             _set_path(raw, keypath, os.environ[env])
-    return Config.model_validate(raw)
+    return raw
+
+
+def load_config(path: str | os.PathLike | None = None) -> Config:
+    return Config.model_validate(load_raw(path))

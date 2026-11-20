@@ -1,92 +1,114 @@
 {% extends "base.html" %}
-{% block title %}{{ e.sender_label }} — {{ e.event_id }}{% endblock %}
+{% from "_macros.html" import initials, status_badge %}
+{% block title %}{{ e.sender_label }} · Household Agent{% endblock %}
+{% block heading %}<a href="/activity" class="faint" style="font-weight:500">Activity /</a> {{ e.sender_label or e.sender_handle }}{% endblock %}
+{% block subheading %}<div class="sub mono">{{ e.event_id }}</div>{% endblock %}
+{% block actions %}{{ status_badge(e.status) }}{% endblock %}
 {% block content %}
-{% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
-{% if err %}<div class="flash bad">{{ err }}</div>{% endif %}
-{% set b = badge(e.status) %}
-<div class="card" id="live" data-event="{{ e.event_id }}" data-status="{{ e.status }}">
-  <div class="row" style="border:0;padding:0">
-    <div class="top"><span class="who">{{ e.sender_label or e.sender_handle }}</span><span>{{ e.received_at|localtime }}</span>
-      <span class="spacer"></span><span class="badge b-{{ b[1] }}">{{ b[0] }}</span></div>
+<div class="stack">
+{% if msg %}<div class="notice ok">{{ icon("check") }}<span class="body">{{ msg }}</span></div>{% endif %}
+{% if err %}<div class="notice bad">{{ icon("alert") }}<span class="body">{{ err }}</span></div>{% endif %}
+
+<div class="grid g-main">
+  <div class="stack">
+    <div class="card">
+      <div class="card-h">
+        <span class="avatar {{ 'mail' if e.source == 'mail' }}">{% if e.source == "mail" %}{{ icon("mail", 16) }}{% else %}{{ initials(e.sender_label) }}{% endif %}</span>
+        <div><h2>{{ e.sender_label or e.sender_handle }}</h2><div class="faint" style="font-size:12.5px">{{ e.received_at|localtime }} · {{ "Mail" if e.source == "mail" else "iMessage" }}</div></div>
+      </div>
+      <div class="card-b">
+        {% if e.recent_context %}
+        <div class="ctx">{% for c in e.recent_context %}<div class="{{ 'me' if c.startswith('Me:') }}">{{ c }}</div>{% endfor %}</div>
+        {% endif %}
+        <div class="bubble">{% if e.subject %}<b>{{ e.subject }}</b>
+{% endif %}{{ e.text }}</div>
+        {% if e.reason %}<div class="muted" style="margin-top:10px;font-size:13px">{{ icon("alert", 14) }} {{ e.reason|replace("_", " ") }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Outcome</h2>
+        {% if e.confidence is not none %}<div class="right"><span class="badge b-muted plain">confidence {{ "%.0f"|format(e.confidence * 100) }}%</span></div>{% endif %}</div>
+      <div class="card-b grid" style="gap:8px">
+        {% for c in commands %}{% set p = c.payload %}{% set old = c.generation != e.generation %}
+        {% if c.op == "delete_item" %}
+        <div class="itemcard {{ 'old' if old }}"><span class="ic" style="background:var(--bad-soft);color:var(--bad)">{{ icon("trash", 16) }}</span>
+          <div><div class="t">Delete {{ p.kind }}</div><div class="m mono">{{ p.apple_item_id[:18] }}…</div></div><span class="badge b-{{ 'ok' if c.status == 'done' else 'bad' if c.status == 'failed' else 'muted' }}">{{ c.status }}</span></div>
+        {% else %}
+        <div class="itemcard {{ 'ev' if c.op == 'create_event' }} {{ 'old' if old or c.status == 'cancelled' }}">
+          <span class="ic">{{ icon("calendar" if c.op == "create_event" else "check-square", 17) }}</span>
+          <div style="min-width:0"><div class="t">{{ p.title }}</div>
+            <div class="m">{% if c.op == "create_reminder" %}{{ p.list }}{% if p.due %} · due {{ p.due }}{% if p.due_time %} {{ p.due_time }}{% endif %}{% endif %}{% if p.alert %} · ⏰ {{ p.alert|localtime }}{% endif %}
+            {% else %}{{ p.calendar }} · {% if p.all_day %}{{ p.start|localtime("%a %b %-d") }}, all day{% else %}{{ p.start|localtime }} – {{ p.end|localtime("%-I:%M %p") }}{% endif %}{% if p.location %} · {{ p.location }}{% endif %}{% endif %}
+            {% if old %} · earlier run{% endif %}</div>
+            {% if c.error %}<div class="m" style="color:var(--bad)">{{ c.error }}</div>{% endif %}</div>
+          <span class="badge b-{{ {'done':'ok','failed':'bad','held':'warn','pending':'info','sent':'info'}.get(c.status, 'muted') }}">{{ {'done':'in Reminders' if c.op == 'create_reminder' else 'on Calendar','held':'awaiting review','sent':'sent to Mac'}.get(c.status, c.status) }}</span>
+        </div>
+        {% endif %}
+        {% else %}<div class="muted" style="font-size:13.5px">Nothing to create{% if e.extraction %} — {{ e.extraction.reasoning_brief }}{% endif %}.</div>{% endfor %}
+      </div>
+      <div class="sec-foot" style="justify-content:flex-start;flex-wrap:wrap">
+        {% if can.approve %}<button class="btn ok" data-id="{{ e.event_id }}" onclick="HA.action(this,'approve',this.dataset.id,{done:'Approved'})">{{ icon("check", 16) }}Approve</button>{% endif %}
+        {% if can.reject %}<button class="btn danger" data-id="{{ e.event_id }}" onclick="HA.action(this,'reject',this.dataset.id,{done:'Rejected'})">{{ icon("x", 16) }}Reject</button>{% endif %}
+        {% if can.undo %}<button class="btn danger" data-id="{{ e.event_id }}" onclick="HA.action(this,'undo',this.dataset.id,{confirm:'Delete the created items from Reminders/Calendar?',done:'Undo sent to the Mac'})">{{ icon("undo", 15) }}Undo</button>{% endif %}
+        {% if can.retry %}<button class="btn" data-id="{{ e.event_id }}" onclick="HA.action(this,'retry',this.dataset.id,{confirm:'Re-run extraction? Items from the previous run are removed first.',done:'Re-running'})">{{ icon("refresh", 15) }}Retry</button>{% endif %}
+        <button class="btn ghost" onclick="const d=document.getElementById('edit');d.open=true;d.scrollIntoView({behavior:'smooth'})">{{ icon("pencil", 15) }}Edit</button>
+      </div>
+    </div>
+
+    <details class="card" id="edit">
+      <summary class="card-h" style="padding-bottom:14px;cursor:pointer;list-style:none"><h2>{{ icon("pencil", 15) }} Reprocess with edits</h2></summary>
+      <div class="card-b" style="padding-top:0">
+        <p class="help" style="margin-top:0">Edit what the model extracted and send it. Skips the confidence check; anything the previous run created is deleted first.
+          Action fields: <span class="mono">type</span> (create_reminder | create_event), <span class="mono">title, due_date</span> (YYYY-MM-DD), <span class="mono">due_time</span> (HH:MM), <span class="mono">start/end</span> (YYYY-MM-DDTHH:MM), <span class="mono">all_day, location, notes</span>.</p>
+        <form method="post" action="/actions/reprocess/{{ e.event_id|urlencode }}">
+          <textarea class="code" name="extraction" rows="16">{{ extraction_json }}</textarea>
+          <div class="row-flex" style="margin-top:10px;justify-content:flex-end"><button class="btn primary">{{ icon("send", 15) }}Send</button></div>
+        </form>
+      </div>
+    </details>
   </div>
-  {% if e.subject %}<div style="margin-top:6px"><b>{{ e.subject }}</b></div>{% endif %}
-  <div class="msg">{{ e.text }}</div>
-  {% if e.reason %}<div class="sub" style="color:var(--muted)">{{ e.reason }}</div>{% endif %}
-  {% if e.recent_context %}<details><summary>Context ({{ e.recent_context|length }})</summary><pre>{{ e.recent_context|join("\n") }}</pre></details>{% endif %}
-  <dl class="kv" style="margin-top:10px">
-    <dt>Event</dt><dd>{{ e.event_id }}</dd>
-    <dt>Source</dt><dd>{{ e.source }}{% if e.chat_id %} · {{ e.chat_id }}{% endif %}</dd>
-    {% if e.confidence is not none %}<dt>Confidence</dt><dd>{{ "%.2f"|format(e.confidence) }}</dd>{% endif %}
-    {% if e.extract_ms %}<dt>Extraction</dt><dd>{{ e.extract_ms }} ms · prompt {{ e.prompt_version }}</dd>{% endif %}
-    {% if e.last_error %}<dt>Last error</dt><dd>{{ e.last_error }}</dd>{% endif %}
-  </dl>
-</div>
 
-<div class="card actions">
-  {% if can.approve %}<form method="post" action="/actions/approve/{{ e.event_id|urlencode }}"><button class="primary">Approve</button></form>{% endif %}
-  {% if can.reject %}<form method="post" action="/actions/reject/{{ e.event_id|urlencode }}"><button class="danger">Reject</button></form>{% endif %}
-  {% if can.undo %}<form method="post" action="/actions/undo/{{ e.event_id|urlencode }}" onsubmit="return confirm('Delete the created items from Reminders/Calendar?')"><button class="danger">Undo</button></form>{% endif %}
-  {% if can.retry %}<form method="post" action="/actions/retry/{{ e.event_id|urlencode }}" onsubmit="return confirm('Re-run extraction? Items created by the previous run are removed first.')"><button>Retry</button></form>{% endif %}
-  <button type="button" onclick="document.getElementById('edit').open=true;document.getElementById('edit').scrollIntoView()">Edit…</button>
+  <div class="card">
+    <div class="card-h"><h2>Trace</h2><div class="right faint" style="font-size:12.5px">{{ trace|length }} steps{% if total_ms %} · {{ total_ms }} ms{% endif %}{% if e.prompt_version %} · prompt {{ e.prompt_version }}{% endif %}</div></div>
+    <div class="timeline">
+      {% for t in trace %}{% set d = t.data or {} %}
+      {% set kind = {"gate": ("warn" if d.decision == "skip" else "ok"), "extract": "ok", "extract_error": "bad",
+                     "plan": ("warn" if d.review_reasons else "ok"), "command_result": ("bad" if d.status == "failed" else "ok"),
+                     "review": ("ok" if d.decision == "approved" else "bad"), "undo": "warn"}.get(t.step, "accent") %}
+      <details class="step {{ kind }}" {{ "open" if t.step in ("extract_error",) }}>
+        <summary><span class="marker">{{ icon({"ok": "check", "bad": "x", "warn": "alert"}.get(kind, "arrow-right"), 11) }}</span>
+          {{ step_label(t.step) }}
+          <span class="muted" style="font-weight:400;font-size:12.5px">
+            {%- if t.step == "gate" %} {{ "passed" if d.decision == "pass" else d.reason|replace("_", " ") }}
+            {%- elif t.step == "extract" %} {{ d.parsed.actions|length }} action{{ "s" if d.parsed.actions|length != 1 }} · {{ "%.0f"|format(d.parsed.confidence * 100) }}%
+            {%- elif t.step == "plan" %} {{ d.commands|length }} command{{ "s" if d.commands|length != 1 }}{% if d.review_reasons %} · review{% endif %}
+            {%- elif t.step in ("command_sent", "command_result") %} {{ d.op|replace("_", " ") }}{% if d.status %} · {{ d.status }}{% endif %}
+            {%- elif t.step == "allowlist" %} {{ d.label }}
+            {%- elif t.step == "review" %} {{ d.decision }}
+            {%- endif %}</span>
+          <span class="t">{% if t.duration_ms %}{{ t.duration_ms }} ms · {% endif %}{{ t.created_at|localtime("%-I:%M:%S %p") }}</span></summary>
+        <div class="detail">
+          {% if t.step == "extract" %}
+            <div class="help" style="margin-bottom:6px">Parsed</div><pre>{{ d.parsed|pretty }}</pre>
+            <details style="margin-top:8px"><summary class="link" style="font-size:12.5px">Raw model output</summary><pre style="margin-top:6px">{{ d.raw }}</pre></details>
+            {% for msg in d.prompt %}<details style="margin-top:8px"><summary class="link" style="font-size:12.5px">Prompt · {{ msg.role }}</summary><pre style="margin-top:6px">{{ msg.content }}</pre></details>{% endfor %}
+          {% elif t.step == "extract_error" and d.raw %}
+            <pre>{{ d.error }}</pre><div class="help" style="margin:8px 0 6px">Raw model output</div><pre>{{ d.raw }}</pre>
+          {% else %}<pre>{{ d|pretty }}</pre>{% endif %}
+        </div>
+      </details>
+      {% else %}<div class="empty">No trace yet.</div>{% endfor %}
+    </div>
+  </div>
 </div>
-
-{% if commands %}
-<div class="card">
-  <h2>Commands</h2>
-  <table>
-    <tr><th>Op</th><th>Item</th><th>Status</th></tr>
-    {% for c in commands %}
-    <tr style="{{ 'opacity:.55' if c.generation != e.generation }}">
-      <td>{{ c.op }}{% if c.generation != e.generation %} <small>(earlier run)</small>{% endif %}</td>
-      <td>{% if c.op == "delete_item" %}{{ c.payload.kind }} {{ c.payload.apple_item_id[:10] }}…{% else %}
-        <b>{{ c.payload.title }}</b><br>
-        {% if c.op == "create_reminder" %}{{ c.payload.list }}{% if c.payload.due %} · due {{ c.payload.due }}{% if c.payload.due_time %} {{ c.payload.due_time }}{% endif %}{% endif %}{% if c.payload.alert %} · ⏰ {{ c.payload.alert|localtime }}{% endif %}
-        {% else %}{{ c.payload.calendar }} · {% if c.payload.all_day %}{{ c.payload.start|localtime("%a %b %-d") }} (all day){% else %}{{ c.payload.start|localtime }} – {{ c.payload.end|localtime("%-I:%M %p") }}{% endif %}{% if c.payload.location %} · {{ c.payload.location }}{% endif %}{% endif %}
-      {% endif %}</td>
-      <td>{{ c.status }}{% if c.error %}<br><small style="color:var(--bad)">{{ c.error }}</small>{% endif %}</td>
-    </tr>
-    {% endfor %}
-  </table>
 </div>
-{% endif %}
-
-<div class="card">
-  <h2>Trace</h2>
-  {% for t in trace %}
-  <details {{ "open" if t.step in ("plan", "extract_error") }}>
-    <summary>{{ t.step }}{% if t.duration_ms %} <span class="badge b-muted">{{ t.duration_ms }} ms</span>{% endif %}<span class="t">{{ t.created_at|localtime("%-I:%M:%S %p") }}</span></summary>
-    {% if t.step == "extract" %}
-      <label>Parsed extraction</label><pre>{{ t.data.parsed|pretty }}</pre>
-      <label>Raw model output</label><pre>{{ t.data.raw }}</pre>
-      {% for msg in t.data.prompt %}<label>Prompt — {{ msg.role }}</label><pre>{{ msg.content }}</pre>{% endfor %}
-    {% else %}
-      <pre>{{ t.data|pretty }}</pre>
-    {% endif %}
-  </details>
-  {% else %}<div class="empty">No trace yet.</div>{% endfor %}
-</div>
-
-<details class="card" id="edit">
-  <summary>Reprocess with edits</summary>
-  <p style="font-size:13px;color:var(--muted)">Edit the extraction and send it. Skips the confidence check; anything the previous run created is deleted first.
-  Action fields: type (create_reminder | create_event), title, list, due_date (YYYY-MM-DD), due_time (HH:MM), start/end (YYYY-MM-DDTHH:MM), all_day, location, calendar, notes, source_quote.</p>
-  <form method="post" action="/actions/reprocess/{{ e.event_id|urlencode }}">
-    <textarea name="extraction" rows="18">{{ extraction_json }}</textarea>
-    <div class="actions" style="margin-top:8px"><button class="primary">Send</button></div>
-  </form>
-</details>
 {% endblock %}
 {% block scripts %}
 <script>
-(function(){
+document.addEventListener("DOMContentLoaded", () => {
   const id = {{ e.event_id|tojson }};
-  const es = new EventSource("/api/stream");
-  es.onmessage = (m) => {
-    const d = JSON.parse(m.data);
-    if (d.event_id !== id) return;
-    const editing = document.getElementById("edit").open;
-    if (!editing) location.replace(location.pathname);
-  };
-})();
+  HA.on((d) => { if (d.event_id === id && !document.getElementById("edit").open) location.replace(location.pathname); });
+});
 </script>
 {% endblock %}

@@ -1,4 +1,4 @@
-"""FastAPI app: agent API, dashboard, background loops."""
+"""FastAPI app: agent API, dashboard ("control room"), settings API, background loops."""
 from __future__ import annotations
 
 import asyncio
@@ -7,50 +7,81 @@ import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, urlparse
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
+from fastapi import Body, Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import __version__
+from . import __version__, views
 from . import models as m
 from .backup import backup_if_due
 from .commands import Bus, CommandQueue
-from .config import Config, load_config
-from .extract import LLMClient, LLMError, PromptTemplate, VLLMClient, extract
-from .gate import gate
+from .config import Config, load_raw
+from .extract import LLMClient, LLMError, VLLMClient, extract
+from .gate import gate, normalize_handle
 from .heartbeat import Alerter, Health, run_every
+from .icons import icon
 from .models import DB
 from .pipeline import ActionError, Pipeline
 from .planner import plan
 from .schemas import CommandResult, Event, Heartbeat
+from .settings import SettingsError, SettingsStore
 
 log = logging.getLogger("brain")
 HERE = Path(__file__).parent
 
 STATUS_BADGE = {
-    m.DONE: ("created", "ok"), m.QUEUED: ("queued", "info"), m.RECEIVED: ("processing", "info"),
-    m.SKIPPED: ("skipped", "muted"), m.NEEDS_REVIEW: ("needs review", "warn"), m.FAILED: ("failed", "bad"),
-    m.REJECTED: ("rejected", "muted"), m.UNDOING: ("undoing", "info"), m.UNDONE: ("undone", "muted"),
+    m.DONE: ("Created", "ok"), m.QUEUED: ("Queued", "info"), m.RECEIVED: ("Processing", "info"),
+    m.SKIPPED: ("Skipped", "muted"), m.NEEDS_REVIEW: ("Needs review", "warn"), m.FAILED: ("Failed", "bad"),
+    m.REJECTED: ("Rejected", "muted"), m.UNDOING: ("Undoing", "info"), m.UNDONE: ("Undone", "muted"),
 }
+STEP_LABEL = {
+    "ingest": "Received", "allowlist": "Allowlist", "gate": "Gate", "extract": "LLM extraction",
+    "extract_error": "LLM error", "plan": "Planner", "queue": "Queued for Mac", "command_sent": "Sent to Mac",
+    "command_result": "Mac result", "review": "Review", "undo": "Undo", "retry": "Retry", "edit": "Edited",
+}
+AGENT_PATHS = ("/api/agent/", "/api/events")
 
 
 def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alerter: Alerter | None = None,
-               background: bool = True) -> FastAPI:
-    cfg = cfg or load_config()
+               background: bool = True, base_raw: dict | None = None) -> FastAPI:
+    if cfg is None:
+        base_raw = load_raw()
+        cfg = Config.model_validate(base_raw)
     db = DB(cfg.storage.db_path)
+    settings = SettingsStore(cfg, db, base_raw)  # applies saved dashboard overrides to cfg in place
     bus = Bus()
     queue = CommandQueue(db, bus)
     alerter = alerter or Alerter(cfg, db)
     health = Health(cfg, db, alerter)
-    llm = llm or VLLMClient(cfg.llm)
+    llm = llm or VLLMClient(lambda: cfg.llm)
     pipeline = Pipeline(cfg, db, llm, queue, bus, alerter, health)
     health.on_llm_recovered = lambda: asyncio.create_task(pipeline.retry_received())
+    state: dict[str, Any] = {"mail": None}
+
+    def start_mail() -> None:
+        if state["mail"]:
+            state["mail"].stop()
+            state["mail"] = None
+        health.mail_status = {"enabled": cfg.watch.mail.enabled, "state": "disabled", "folders": {}}
+        if cfg.watch.mail.enabled:
+            from .mail import MailListener
+            state["mail"] = MailListener(cfg, db, pipeline, health, asyncio.get_running_loop())
+            state["mail"].start()
+
+    def on_settings_change(sections: set[str]) -> None:
+        log.info("settings changed: %s (v%s)", ", ".join(sorted(sections)), settings.version)
+        bus.publish({"type": "settings", "sections": sorted(sections), "version": settings.version})
+        if "watch.mail" in sections and background:
+            start_mail()
+
+    settings.listeners.append(on_settings_change)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -70,36 +101,37 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
                 asyncio.create_task(run_every(60, ping_llm, name="llm-ping")),
                 asyncio.create_task(run_every(600, lambda: backup_if_due(cfg, db), name="backup")),
             ]
-            if cfg.watch.mail.enabled:
-                from .mail import MailListener
-                listener = MailListener(cfg, db, pipeline, health, asyncio.get_running_loop())
-                listener.start()
-                app.state.mail = listener
+            start_mail()
         yield
         for t in tasks:
             t.cancel()
-        if getattr(app.state, "mail", None):
-            app.state.mail.stop()
+        if state["mail"]:
+            state["mail"].stop()
 
     app = FastAPI(title="Household Agent brain", version=__version__, lifespan=lifespan)
-    app.state.cfg, app.state.db, app.state.pipeline, app.state.queue, app.state.health = cfg, db, pipeline, queue, health
+    app.state.cfg, app.state.db, app.state.pipeline, app.state.queue = cfg, db, pipeline, queue
+    app.state.health, app.state.settings = health, settings
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
     env = templates.env
 
-    def localtime(value: str | None, fmt: str = "%a %b %-d, %-I:%M %p") -> str:
+    # ---- template helpers -------------------------------------------------------------
+    def localtime(value: Any, fmt: str = "%a %b %-d, %-I:%M %p") -> str:
         if not value:
             return ""
         try:
-            return datetime.fromisoformat(value).astimezone(cfg.tz).strftime(fmt)
+            dt = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+            return dt.astimezone(cfg.tz).strftime(fmt)
         except ValueError:
-            return value
+            return str(value)
 
     env.filters["localtime"] = localtime
     env.filters["pretty"] = lambda v: json.dumps(v, indent=2, ensure_ascii=False, default=str)
-    env.globals.update(badge=lambda s: STATUS_BADGE.get(s, (s, "muted")), version=__version__)
+    env.filters["handle"] = normalize_handle
+    env.globals.update(badge=lambda s: STATUS_BADGE.get(s, (s, "muted")), version=__version__,
+                       step_label=lambda s: STEP_LABEL.get(s, s), icon=icon)
 
-    # ---- auth ------------------------------------------------------------------
+    # ---- auth & CSRF -------------------------------------------------------------------
     def agent_auth(request: Request) -> None:
         header = request.headers.get("authorization", "")
         token = header[7:] if header.lower().startswith("bearer ") else ""
@@ -116,7 +148,21 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         if not creds or not secrets.compare_digest(creds.password.encode(), pw.encode()):
             raise HTTPException(401, "auth required", headers={"WWW-Authenticate": "Basic"})
 
-    # ---- agent API ---------------------------------------------------------------
+    @app.middleware("http")
+    async def same_origin_writes(request: Request, call_next):
+        """Dashboard writes must come from the dashboard itself (blocks cross-site form posts)."""
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not request.url.path.startswith(AGENT_PATHS):
+            site = request.headers.get("sec-fetch-site")
+            origin = request.headers.get("origin")
+            if site == "cross-site" or (origin and origin != "null"
+                                        and urlparse(origin).netloc != request.headers.get("host")):
+                return JSONResponse({"error": "cross-origin request blocked"}, status_code=403)
+        return await call_next(request)
+
+    def wants_json(request: Request) -> bool:
+        return request.headers.get("x-requested-with") == "fetch" or "application/json" in request.headers.get("accept", "")
+
+    # ---- agent API ------------------------------------------------------------------------
     @app.post("/api/events", dependencies=[Depends(agent_auth)])
     async def post_event(ev: Event, sync: bool = False):
         return await pipeline.ingest(ev, sync=sync)
@@ -134,12 +180,23 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
     @app.post("/api/agent/heartbeat", dependencies=[Depends(agent_auth)])
     async def post_heartbeat(hb: Heartbeat):
         await health.record_heartbeat(hb)
-        return {"ok": True}
+        bus.publish({"type": "heartbeat"})
+        return {"ok": True, "settings_version": settings.version}
 
-    # ---- JSON for the dashboard / debugging -------------------------------------------
+    @app.get("/api/agent/config", dependencies=[Depends(agent_auth)])
+    async def agent_config():
+        return settings.agent_config()
+
+    # ---- dashboard JSON ---------------------------------------------------------------------
     @app.get("/api/health", dependencies=[Depends(dash_auth)])
     async def api_health():
         return {"version": __version__, **health.snapshot(queue.depth())}
+
+    @app.get("/api/overview", dependencies=[Depends(dash_auth)])
+    async def api_overview():
+        ov = views.overview(db, cfg, health.snapshot(queue.depth()))
+        ov["settings_version"] = settings.version
+        return JSONResponse(json.loads(json.dumps(ov, default=str)))
 
     @app.get("/api/events/{event_id:path}", dependencies=[Depends(dash_auth)])
     async def api_event(event_id: str):
@@ -169,23 +226,90 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         return StreamingResponse(gen(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    # ---- dashboard pages ---------------------------------------------------------------
-    def page(request: Request, name: str, **ctx: Any) -> HTMLResponse:
-        return templates.TemplateResponse(request, name, {"cfg": cfg, **ctx})
+    # ---- settings API ---------------------------------------------------------------------------
+    @app.get("/api/settings", dependencies=[Depends(dash_auth)])
+    async def get_settings():
+        return settings.view()
+
+    @app.patch("/api/settings", dependencies=[Depends(dash_auth)])
+    async def patch_settings(patch: dict = Body(...)):
+        try:
+            changed = settings.update(patch)
+        except SettingsError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=422)
+        return {"ok": True, "changed": sorted(changed), **settings.view()}
+
+    @app.post("/api/settings/reset", dependencies=[Depends(dash_auth)])
+    async def reset_setting(body: dict = Body(...)):
+        try:
+            changed = settings.reset(str(body.get("path", "")))
+        except SettingsError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=422)
+        return {"ok": True, "changed": sorted(changed), **settings.view()}
+
+    @app.post("/api/settings/test-llm", dependencies=[Depends(dash_auth)])
+    async def test_llm(body: dict = Body(default={})):
+        base_url = (body.get("base_url") or "").strip() or None
+        try:
+            if not hasattr(llm, "list_models"):
+                return {"ok": True, "models": [cfg.llm.model], "latency_ms": round(await llm.ping())}
+            models, ms = await llm.list_models(base_url, body.get("api_key") or None)
+        except Exception as e:  # noqa: BLE001 — shown in the UI
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"[:400]}
+        model = body.get("model") or cfg.llm.model
+        return {"ok": True, "models": models, "latency_ms": round(ms), "model_found": model in models}
+
+    @app.post("/api/system/test-alert", dependencies=[Depends(dash_auth)])
+    async def test_alert():
+        if not cfg.alerts.discord_webhook_url:
+            return {"ok": False, "error": "No Discord webhook configured."}
+        ok = await alerter.send("test", "🔔 Test alert from the Household Agent dashboard.")
+        return {"ok": ok, "error": None if ok else "Discord rejected the webhook call — check the URL."}
+
+    @app.post("/api/system/backup", dependencies=[Depends(dash_auth)])
+    async def backup_now():
+        path = await backup_if_due(cfg, db, force=True)
+        return {"ok": bool(path), "path": path}
+
+    # ---- pages -------------------------------------------------------------------------------
+    def page(request: Request, name: str, nav: str, **ctx: Any) -> HTMLResponse:
+        review = db.one("SELECT COUNT(*) n FROM events WHERE status=?", (m.NEEDS_REVIEW,))["n"]
+        return templates.TemplateResponse(request, name, {
+            "cfg": cfg, "nav": nav, "review_count": review, "agent_online": health.agent_online(),
+            "llm_ok": health.llm_fail_streak == 0 and health.llm_last_ok is not None, **ctx})
 
     @app.get("/", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
-    async def feed(request: Request, status: str | None = None, limit: int = 100):
-        events = db.recent_events(limit=min(limit, 500), status=status or None)
-        review_count = db.one("SELECT COUNT(*) n FROM events WHERE status=?", (m.NEEDS_REVIEW,))["n"]
-        return page(request, "feed.html", events=events, status=status, review_count=review_count,
-                    health=health.snapshot(queue.depth()), statuses=list(STATUS_BADGE))
+    async def overview_page(request: Request):
+        ov = views.overview(db, cfg, health.snapshot(queue.depth()))
+        return page(request, "overview.html", "overview", ov=ov, recent=views.search_events(
+            db, q=None, status=None, source=None, limit=8), upcoming=views.upcoming(db, cfg),
+            prompt_version=pipeline.prompt.version)
+
+    @app.get("/activity", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def activity_page(request: Request, status: str | None = None, q: str | None = None,
+                            source: str | None = None, limit: int = 150):
+        events = views.search_events(db, q=q, status=status or None, source=source or None, limit=min(limit, 500))
+        return page(request, "activity.html", "activity", events=events, status=status, q=q or "",
+                    source=source, counts=views.status_counts(db), statuses=list(STATUS_BADGE))
+
+    @app.get("/review", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def review_page(request: Request):
+        items = []
+        for e in db.recent_events(limit=200, status=m.NEEDS_REVIEW):
+            cmds = [c for c in db.commands_for_event(e["event_id"]) if c["generation"] == e["generation"]]
+            items.append({"e": e, "cmds": [c for c in cmds if c["status"] == "held"]})
+        return page(request, "review.html", "review", items=items)
+
+    @app.get("/items", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def items_page(request: Request):
+        return page(request, "items.html", "items", items=views.live_items(db), upcoming=views.upcoming(db, cfg, 14))
 
     @app.get("/partials/row/{event_id:path}", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
     async def row_partial(request: Request, event_id: str):
         ev = db.get_event(event_id)
         if not ev:
             return HTMLResponse("", status_code=404)
-        return page(request, "_row.html", e=ev)
+        return templates.TemplateResponse(request, "_row.html", {"e": ev})
 
     @app.get("/events/{event_id:path}", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
     async def event_detail(request: Request, event_id: str, msg: str | None = None, err: str | None = None):
@@ -203,20 +327,14 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         }
         extraction = ev["extraction"] or {"actionable": True, "actions": [], "confidence": 1.0,
                                           "reasoning_brief": "added manually"}
-        return page(request, "event.html", e=ev, trace=db.get_trace(event_id), commands=cmds, can=can,
-                    extraction_json=json.dumps(extraction, indent=2, ensure_ascii=False), msg=msg, err=err)
-
-    async def _action(event_id: str, fn) -> RedirectResponse:
-        from urllib.parse import quote
-        try:
-            await fn()
-            q = "?msg=" + quote("Done.")
-        except ActionError as e:
-            q = "?err=" + quote(str(e))
-        return RedirectResponse(f"/events/{quote(event_id)}{q}", status_code=303)
+        trace = db.get_trace(event_id)
+        total_ms = sum(t["duration_ms"] or 0 for t in trace)
+        return page(request, "event.html", "activity", e=ev, trace=trace, commands=cmds, can=can,
+                    total_ms=total_ms, msg=msg, err=err,
+                    extraction_json=json.dumps(extraction, indent=2, ensure_ascii=False))
 
     @app.post("/actions/{action}/{event_id:path}", dependencies=[Depends(dash_auth)])
-    async def do_action(action: str, event_id: str, extraction: str | None = Form(None)):
+    async def do_action(request: Request, action: str, event_id: str, extraction: str | None = Form(None)):
         fns = {
             "approve": lambda: pipeline.approve(event_id),
             "reject": lambda: pipeline.reject(event_id),
@@ -226,28 +344,43 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         }
         if action not in fns:
             raise HTTPException(404)
-        return await _action(event_id, fns[action])
+        try:
+            await fns[action]()
+            error = None
+        except ActionError as e:
+            error = str(e)
+        if wants_json(request):
+            row = db.get_event(event_id)
+            return JSONResponse({"ok": error is None, "error": error, "status": row["status"] if row else None},
+                                status_code=200 if error is None else 409)
+        q = "?err=" + quote(error) if error else "?msg=" + quote("Done.")
+        return RedirectResponse(f"/events/{quote(event_id)}{q}", status_code=303)
 
-    @app.get("/health", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
-    async def health_page(request: Request):
-        alerts = db.all("SELECT * FROM alerts ORDER BY id DESC LIMIT 30")
-        return page(request, "health.html", h=health.snapshot(queue.depth()), alerts=alerts,
-                    last_backup=db.kv_get("last_backup"), prompt_version=pipeline.prompt.version)
+    @app.get("/system", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def system_page(request: Request):
+        return page(request, "system.html", "system", h=health.snapshot(queue.depth()),
+                    alerts=db.all("SELECT * FROM alerts ORDER BY id DESC LIMIT 40"),
+                    commands=views.open_commands(db), last_backup=db.kv_get("last_backup"),
+                    prompt=pipeline.prompt, dbinfo=views.db_info(db), history=settings.history(25),
+                    funnel=views.funnel(db, 24), latency=views.latency(db), settings_version=settings.version,
+                    agent_cfg=settings.agent_config())
 
-    @app.get("/stats", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
-    async def stats_page(request: Request, days: int = 14):
-        return page(request, "stats.html", s=compute_stats(db, cfg, days), days=days)
+    @app.get("/settings", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def settings_page(request: Request):
+        return page(request, "settings.html", "settings", s=settings.view(),
+                    allow=[a.model_dump() for a in cfg.watch.imessage.allow],
+                    agent=health.agent, history=settings.history(10))
 
-    @app.get("/playground", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
-    async def playground(request: Request):
-        return page(request, "playground.html", result=None, form={})
+    @app.get("/lab", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def lab(request: Request):
+        return page(request, "lab.html", "lab", result=None, form={})
 
-    @app.post("/playground", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
-    async def playground_run(request: Request, text: str = Form(...), sender: str = Form("Wife"),
-                             context: str = Form(""), now: str = Form("")):
+    @app.post("/lab", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def lab_run(request: Request, text: str = Form(...), sender: str = Form("Wife"),
+                      context: str = Form(""), now: str = Form("")):
         """Dry run: extraction + plan, nothing stored, nothing sent to the Mac."""
         when = datetime.fromisoformat(now).replace(tzinfo=cfg.tz) if now else datetime.now(cfg.tz)
-        ev = Event(event_id="playground", source="manual", sender_handle="", sender_label=sender,
+        ev = Event(event_id="lab", source="manual", sender_handle="", sender_label=sender,
                    received_at=when, text=text, recent_context=[l for l in context.splitlines() if l.strip()])
         result: dict[str, Any] = {"gate": gate(cfg, ev)}
         try:
@@ -258,50 +391,19 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
                           review=p.review_reasons)
         except LLMError as e:
             result.update(error=str(e), raw=getattr(e, "raw", None))
-        return page(request, "playground.html", result=result,
+        return page(request, "lab.html", "lab", result=result,
                     form={"text": text, "sender": sender, "context": context, "now": now})
+
+    # old URLs
+    for old, new in {"/health": "/system", "/stats": "/", "/playground": "/lab"}.items():
+        app.add_api_route(old, (lambda n: (lambda: RedirectResponse(n, status_code=301)))(new),
+                          methods=["GET"], include_in_schema=False)
 
     @app.get("/favicon.ico")
     async def favicon():
         return Response(status_code=204)
 
     return app
-
-
-def compute_stats(db: DB, cfg: Config, days: int) -> dict[str, Any]:
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = db.all("SELECT created_at, status, actionable, extract_ms FROM events WHERE created_at >= ?", (since,))
-    per_day: dict[str, int] = {}
-    today = datetime.now(cfg.tz).date()
-    for i in range(days - 1, -1, -1):
-        per_day[(today - timedelta(days=i)).isoformat()] = 0
-    by_status: dict[str, int] = {}
-    extracted = actionable = 0
-    lat: list[int] = []
-    for r in rows:
-        d = datetime.fromisoformat(r["created_at"]).astimezone(cfg.tz).date().isoformat()
-        if d in per_day:
-            per_day[d] += 1
-        by_status[r["status"]] = by_status.get(r["status"], 0) + 1
-        if r["actionable"] is not None:
-            extracted += 1
-            actionable += r["actionable"]
-        if r["extract_ms"]:
-            lat.append(r["extract_ms"])
-    lat.sort()
-    return {
-        "total": len(rows),
-        "per_day": per_day,
-        "max_day": max(per_day.values() or [0]) or 1,
-        "by_status": by_status,
-        "extracted": extracted,
-        "pct_actionable": round(100 * actionable / extracted) if extracted else None,
-        "avg_latency_ms": round(sum(lat) / len(lat)) if lat else None,
-        "p90_latency_ms": lat[int(len(lat) * 0.9)] if lat else None,
-        "failures": by_status.get(m.FAILED, 0),
-        "commands_failed": db.one("SELECT COUNT(*) n FROM commands WHERE status='failed' AND created_at >= ?",
-                                  (since,))["n"],
-    }
 
 
 def factory() -> FastAPI:

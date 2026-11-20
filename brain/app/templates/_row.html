@@ -1,14 +1,11 @@
-{% set b = badge(e.status) %}
-<a class="row" id="ev-{{ e.id }}" data-event="{{ e.event_id }}" href="/events/{{ e.event_id|urlencode }}">
-  <div class="top">
-    <span class="who">{{ e.sender_label or e.sender_handle or "?" }}</span>
-    <span>{{ "✉️" if e.source == "mail" else "💬" }}</span>
-    <span>{{ e.received_at|localtime }}</span>
-    <span class="spacer"></span>
-    <span class="badge b-{{ b[1] }}">{{ b[0] }}</span>
+{% from "_macros.html" import initials, status_badge, action_pills %}
+<a class="erow" data-event="{{ e.event_id }}" href="/events/{{ e.event_id|urlencode }}">
+  <span class="avatar {{ 'mail' if e.source == 'mail' }}">{% if e.source == "mail" %}{{ icon("mail", 16) }}{% else %}{{ initials(e.sender_label or e.sender_handle) }}{% endif %}</span>
+  <div style="min-width:0">
+    <div class="top"><span class="who">{{ e.sender_label or e.sender_handle or "?" }}</span><span class="when" data-ago="{{ e.received_at }}" title="{{ e.received_at|localtime }}">{{ e.received_at|localtime }}</span></div>
+    <div class="text">{% if e.subject %}<b>{{ e.subject }}</b> — {% endif %}{{ e.text }}</div>
+    {{ action_pills(e) }}
+    {% if e.reason and e.status not in ("done", "queued") %}<div class="reason">{{ e.reason|replace("_", " ") }}</div>{% endif %}
   </div>
-  <div class="snip">{% if e.subject %}<b>{{ e.subject }}</b> — {% endif %}{{ e.text }}</div>
-  {% if e.extraction and e.extraction.actions %}
-  <div class="sub">→ {% for a in e.extraction.actions %}{{ "📅" if a.type == "create_event" else "☑️" }} {{ a.title }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
-  {% elif e.reason %}<div class="sub">{{ e.reason }}</div>{% endif %}
+  {{ status_badge(e.status) }}
 </a>

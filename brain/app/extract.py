@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 import httpx
 import yaml
@@ -54,7 +54,6 @@ def build_messages(cfg: Config, tpl: PromptTemplate, ev: Event, now: datetime) -
         "weekday": now.strftime("%A"),
         "timezone": cfg.timezone,
         "calendar": "\n".join(days),
-        "lists": json.dumps(cfg.known_lists()),
         "calendars": json.dumps([cfg.rules.calendars.default]),
         "context": "\n".join(f"- {c}" for c in ev.recent_context[-5:]) or "(none)",
         "sender": ev.sender_label or ev.sender_handle or "unknown",
@@ -82,31 +81,44 @@ class LLMClient(Protocol):
 
 
 class VLLMClient:
-    def __init__(self, cfg: LLMConfig):
-        self.cfg = cfg
-        headers = {"Authorization": f"Bearer {cfg.api_key}"} if cfg.api_key else {}
-        self.http = httpx.AsyncClient(base_url=cfg.base_url.rstrip("/"), timeout=cfg.timeout_s, headers=headers)
+    """OpenAI-compatible client. Reads its LLMConfig on every call, so dashboard edits apply live."""
+
+    def __init__(self, cfg: LLMConfig | Callable[[], LLMConfig]):
+        self._get = cfg if callable(cfg) else (lambda: cfg)
+        self.http = httpx.AsyncClient()
+
+    @property
+    def cfg(self) -> LLMConfig:
+        return self._get()
+
+    @staticmethod
+    def _headers(api_key: str | None) -> dict[str, str]:
+        return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
     def request_body(self, messages: list[dict[str, str]]) -> dict[str, Any]:
+        cfg = self.cfg
         body: dict[str, Any] = {
-            "model": self.cfg.model,
+            "model": cfg.model,
             "messages": messages,
-            "temperature": self.cfg.temperature,
-            "max_tokens": self.cfg.max_tokens,
+            "temperature": cfg.temperature,
+            "max_tokens": cfg.max_tokens,
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {"name": "extraction", "schema": EXTRACTION_JSON_SCHEMA, "strict": True},
             },
         }
-        if self.cfg.disable_thinking:
+        if cfg.disable_thinking:
             body["chat_template_kwargs"] = {"enable_thinking": False}
         return body
 
     async def complete(self, messages: list[dict[str, str]]) -> str:
+        cfg = self.cfg
+        url = cfg.base_url.rstrip("/") + "/chat/completions"
         last: Exception | None = None
         for attempt in range(2):  # timeout + 1 retry
             try:
-                r = await self.http.post("/chat/completions", json=self.request_body(messages))
+                r = await self.http.post(url, json=self.request_body(messages), timeout=cfg.timeout_s,
+                                         headers=self._headers(cfg.api_key))
             except (httpx.TransportError, httpx.TimeoutException) as e:
                 last = e
                 continue
@@ -119,11 +131,17 @@ class VLLMClient:
             return data["choices"][0]["message"].get("content") or ""
         raise LLMUnavailable(f"vLLM unreachable after retry: {last!r}")
 
-    async def ping(self) -> float:
+    async def list_models(self, base_url: str | None = None, api_key: str | None = None) -> tuple[list[str], float]:
+        cfg = self.cfg
+        url = (base_url or cfg.base_url).rstrip("/") + "/models"
         t = time.perf_counter()
-        r = await self.http.get("/models", timeout=5)
+        r = await self.http.get(url, timeout=5, headers=self._headers(api_key if base_url else cfg.api_key))
         r.raise_for_status()
-        return (time.perf_counter() - t) * 1000
+        ms = (time.perf_counter() - t) * 1000
+        return [m.get("id", "?") for m in r.json().get("data", [])], ms
+
+    async def ping(self) -> float:
+        return (await self.list_models())[1]
 
     async def aclose(self) -> None:
         await self.http.aclose()
