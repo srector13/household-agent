@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card healthbar">
+  <span><span class="dot {{ 'ok' if health.agent.online else 'bad' }}"></span> Mac agent {{ "online" if health.agent.online else "offline" }}</span>
+  <span><span class="dot {{ 'ok' if health.llm.reachable else 'bad' }}"></span> LLM{% if health.llm.latency_ms %} {{ health.llm.latency_ms }} ms{% endif %}</span>
+  <span>Queue {{ health.queue_depth }}</span>
+  {% if review_count %}<a href="/?status=needs_review"><span class="badge b-warn">{{ review_count }} to review</span></a>{% endif %}
+</div>
+<div class="pills">
+  <a href="/" class="{{ 'on' if not status }}">All</a>
+  {% for s in statuses %}<a href="/?status={{ s }}" class="{{ 'on' if status == s }}">{{ badge(s)[0] }}</a>{% endfor %}
+</div>
+<div class="card" id="feed">
+  {% for e in events %}{% include "_row.html" %}{% else %}<div class="empty" id="empty">No messages yet.</div>{% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const filter = {{ (status or "")|tojson }};
+  const feed = document.getElementById("feed");
+  function connect(){
+    const es = new EventSource("/api/stream");
+    es.onmessage = async (m) => {
+      const {event_id} = JSON.parse(m.data);
+      const r = await fetch("/partials/row/" + encodeURIComponent(event_id));
+      if (!r.ok) return;
+      const tpl = document.createElement("template");
+      tpl.innerHTML = (await r.text()).trim();
+      const node = tpl.content.firstElementChild;
+      const existing = document.querySelector(`[data-event="${CSS.escape(event_id)}"]`);
+      if (existing) existing.replaceWith(node);
+      else if (!filter) { document.getElementById("empty")?.remove(); feed.prepend(node); }
+    };
+    es.onerror = () => { es.close(); setTimeout(connect, 5000); };
+  }
+  connect();
+})();
+</script>
+{% endblock %}

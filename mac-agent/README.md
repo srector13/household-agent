@@ -1,0 +1,188 @@
+# mac-agent
+
+The only Mac-specific piece of Household Agent. A small signed Swift command-line tool, run by
+launchd, that:
+
+- watches `~/Library/Messages/chat.db` (read-only) and POSTs new messages to the brain,
+- long-polls the brain for commands and applies them to Reminders / Calendar via EventKit,
+- sends a heartbeat every 60 s (version, last ROWID, permission flags, outbox depth).
+
+It only makes **outbound** connections. The wire contract is in [`../docs/API.md`](../docs/API.md).
+
+## Layout
+
+```
+Package.swift
+Sources/MacAgent/main.swift            CLI entry point (+ Info.plist embedded in the binary)
+Sources/MacAgentCore/
+  Agent.swift                 orchestrator: scan → outbox → brain, command loop, heartbeat
+  MessagesDatabase.swift      chat.db queries + EventBuilder (rows → events, recent_context)
+  AttributedBodyDecoder.swift typedstream NSAttributedString → text (pure Swift)
+  FileWatcher.swift           DispatchSource on chat.db and chat.db-wal (500 ms debounce in Agent)
+  EventKitService.swift       reminders / events / delete, tag-based idempotency
+  ItemStore.swift             EventKit abstraction + CommandExecutor
+  BrainClient.swift           HTTP client (bearer token)
+  OfflineBuffer.swift         durable JSONL outbox
+  Checkpoint.swift            state.json (last ROWID)
+  Config.swift, Keychain.swift, Logger.swift, AppleDate.swift, Models.swift, Wakeup.swift
+Tests/MacAgentCoreTests/      unit tests (decoder, dates, payloads, outbox, checkpoint, chat.db fixtures)
+launchd/com.household.mac-agent.plist
+scripts/install.sh  uninstall.sh  setup-mac-power.sh  entitlements.plist
+```
+
+## Requirements
+
+- macOS 14 Sonoma or later (uses `requestFullAccessToReminders` / `requestFullAccessToEvents`)
+- Xcode 15+ or the Swift 5.9+ command-line tools
+- An Apple Developer signing identity (strongly recommended, see below)
+
+## Build & test
+
+```sh
+cd mac-agent
+swift build
+swift test
+```
+
+The core logic also builds and tests on Linux (EventKit/Keychain/file-watching are compiled out),
+which is how CI-style checks can run off-Mac.
+
+## Install
+
+```sh
+security find-identity -v -p codesigning        # pick your "Developer ID Application" or "Apple Development" identity
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+BRAIN_URL="http://brain.your-tailnet.ts.net:8080" \
+HA_AGENT_TOKEN="<the brain's security.agent_token>" \
+./scripts/install.sh
+```
+
+This builds a release binary, signs it with the hardened runtime and the Calendar entitlement,
+installs it at `~/Library/Application Support/HouseholdAgent/bin/mac-agent`, writes a default
+`config.json` if none exists, stores the token in the login Keychain, and loads the LaunchAgent
+`com.household.mac-agent` (`RunAtLoad` + `KeepAlive`).
+
+**Why signing matters:** macOS privacy grants (Full Disk Access, Reminders, Calendars) are tied to
+the binary's code-signing identity. With a stable Developer identity and the fixed identifier
+`com.household.mac-agent`, grants survive rebuilds. Ad-hoc signed builds may be treated as a new app
+after every rebuild.
+
+### Permissions (one time)
+
+1. **Full Disk Access** (to read chat.db): System Settings → Privacy & Security → Full Disk Access →
+   `+` → ⌘⇧G → paste `~/Library/Application Support/HouseholdAgent/bin/mac-agent` → enable. Then
+   `launchctl kickstart -k gui/$(id -u)/com.household.mac-agent`.
+2. **Reminders + Calendars**: the agent requests full access on start; approve the prompts.
+   To trigger them by hand (and print the status of all three permissions):
+   ```sh
+   "$HOME/Library/Application Support/HouseholdAgent/bin/mac-agent" --request-permissions
+   ```
+   Note: when run from Terminal, macOS may attribute the request to Terminal rather than the agent.
+   The launchd-started agent is what needs the grant — check System Settings → Privacy & Security →
+   Reminders / Calendars lists "Household Agent" / `mac-agent` and that the health panel on the
+   dashboard shows `reminders_ok` and `calendar_ok`.
+
+Never grant Full Disk Access to Terminal or a Python interpreter for this — only to the agent binary.
+
+## Configuration
+
+`~/Library/Application Support/HouseholdAgent/config.json`:
+
+```json
+{
+  "brain_url": "http://brain.your-tailnet.ts.net:8080",
+  "keychain_service": "com.household.mac-agent",
+  "keychain_account": "agent_token",
+  "allow_handles": ["+17855550000"],
+  "labels": {"+17855550000": "Wife"},
+  "context_count": 5,
+  "log_level": "info"
+}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `brain_url` | — (required) | Brain base URL (Tailscale MagicDNS name) |
+| `keychain_service` / `keychain_account` | `com.household.mac-agent` / `agent_token` | Keychain item with the bearer token. `HA_AGENT_TOKEN` env is the fallback. |
+| `allow_handles` | `[]` | Optional client-side prefilter: handles, chat identifiers or chat GUIDs. Empty = send everything; the **brain** enforces the real allowlist and drops the rest without storing it. Setting it here too keeps other conversations from ever leaving the Mac. |
+| `labels` | `{}` | Handle → name for `sender_label` and `recent_context` prefixes |
+| `context_count` | `5` | Previous messages in the same chat sent as `recent_context` |
+| `log_level` | `info` | `debug`, `info`, `warn`, `error` |
+| `chat_db_path` | Messages default | Point at a copy of chat.db for testing |
+| `poll_interval_s` | `60` | Safety poll in case a file event is missed |
+| `heartbeat_interval_s` | `60` | |
+| `long_poll_wait_s` | `30` | `wait` for `GET /api/agent/commands` |
+| `use_nsunarchiver_fallback` | `false` | Also try `NSUnarchiver` when the pure-Swift decoder fails. Off by default: malformed blobs can raise an uncatchable Objective-C exception, which under `KeepAlive` would crash-loop on the same row. |
+
+To store or rotate the token by hand:
+
+```sh
+security add-generic-password -U -s com.household.mac-agent -a agent_token -w '<token>'
+```
+
+## How it works
+
+- **Reading:** chat.db is opened with `file:…?mode=ro` (never written). A long-lived read connection
+  sees WAL commits. File events on `chat.db` / `chat.db-wal` trigger a scan after a 500 ms debounce;
+  a 60 s safety poll covers missed events. Each scan reads `message.ROWID > last` joined with `handle`
+  and `chat`, skips tapbacks/reactions (`associated_message_type != 0`), non-text items, empty bodies
+  and (optionally) non-allowlisted chats. `text` falls back to decoding `attributedBody`.
+- **Delivery:** every event goes through `outbox.jsonl` (append → POST → pop), so a brain outage
+  or crash never loses a message and delivery stays in ROWID order. `state.json` keeps
+  `last_rowid` (acknowledged by the brain with a 2xx, or deliberately skipped) and
+  `last_scanned_rowid` (read and buffered). `422` from the brain is logged and skipped;
+  `401` and `5xx`/network errors keep the event buffered and retry with exponential backoff.
+- **First run** starts after the current max ROWID — no history is sent. `--backfill N` resends
+  the last N messages (the brain dedupes on `event_id`).
+- **Commands:** `create_reminder`, `create_event`, `delete_item`. Before creating, the agent searches
+  for an item whose notes contain the payload `tag` (`[ha:<event_id>]`) and returns that instead of
+  creating a duplicate, so re-delivered commands are safe. Deleting an item that is already gone is
+  reported as `done`.
+- `sender_handle` for messages you sent (`is_from_me: true`) is the other party's handle in 1:1 chats
+  and the chat identifier in group chats.
+
+## CLI
+
+```
+mac-agent [--config PATH] [--backfill N] [--once] [--request-permissions] [--version]
+```
+
+`--once` does a single scan / delivery / command poll (`wait=0`) / heartbeat and exits — handy with
+`log_level: debug` when setting up.
+
+## Files & logs
+
+| Path | |
+|---|---|
+| `~/Library/Application Support/HouseholdAgent/config.json` | config |
+| `~/Library/Application Support/HouseholdAgent/state.json` | checkpoint |
+| `~/Library/Application Support/HouseholdAgent/outbox.jsonl` | undelivered events |
+| `~/Library/Logs/HouseholdAgent/agent.log` | main log, rotated at 5 MB (`agent.log.1`–`.3`) |
+| `~/Library/Logs/HouseholdAgent/stderr.log` | launchd stderr (crashes only) |
+
+```sh
+tail -f ~/Library/Logs/HouseholdAgent/agent.log
+launchctl print gui/$(id -u)/com.household.mac-agent | head -30
+launchctl kickstart -k gui/$(id -u)/com.household.mac-agent   # restart
+```
+
+## Always-on hub (Phase 6)
+
+`./scripts/setup-mac-power.sh` disables system/disk sleep and enables lid-closed operation
+(`pmset -a sleep 0 disksleep 0`, `pmset -a disablesleep 1`) and prints the manual steps for battery
+charge limiting, automatic login and update settings.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Log: `cannot read …/chat.db — grant Full Disk Access` / dashboard `fda_ok: false` | Grant FDA to the **installed binary** path, then kickstart. Re-grant if you changed the signing identity. |
+| `reminders_ok` / `calendar_ok` false | Approve in System Settings → Privacy & Security → Reminders / Calendars; run `--request-permissions`. |
+| `no agent token` and exit 78 | Store the token in the Keychain (see above) or set `HA_AGENT_TOKEN`. |
+| `brain rejected the agent token (401/403)` | Token mismatch with the brain's `security.agent_token`. |
+| `brain unreachable … event(s) buffered` | Brain down or Tailscale disconnected; events are kept in `outbox.jsonl` and sent when it is back. |
+| Texts show up in Messages but not the dashboard | Check `allow_handles` (agent) and the brain allowlist; run with `log_level: debug` to see per-ROWID skip reasons. |
+| Messages from before install never appear | Expected — first run does not backfill. Use `--backfill N`. |
+| Agent restarts repeatedly | `stderr.log`; `launchctl print gui/$(id -u)/com.household.mac-agent`. |
+
+Uninstall: `./scripts/uninstall.sh` (add `--purge` to remove config/state/logs/token).

@@ -1,0 +1,32 @@
+[project]
+name = "household-brain"
+version = "0.1.0"
+description = "Household agent brain: ingest messages, extract tasks with a local LLM, queue Apple Reminders/Calendar commands."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "jinja2>=3.1",
+  "httpx>=0.27",
+  "pyyaml>=6.0",
+  "pydantic>=2.7",
+  "python-multipart>=0.0.9",
+  "imapclient>=3.0",
+  "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "anyio>=4"]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["templates/*.html", "static/*", "prompts/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

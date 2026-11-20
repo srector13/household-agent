@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.household.mac-agent</string>
+    <key>CFBundleName</key>
+    <string>HouseholdAgent</string>
+    <key>CFBundleDisplayName</key>
+    <string>Household Agent</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>Household Agent creates reminders from household messages.</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>Household Agent creates reminders from household messages.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Household Agent creates calendar events from household messages.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Household Agent creates calendar events from household messages.</string>
+</dict>
+</plist>

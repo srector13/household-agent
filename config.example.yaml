@@ -1,0 +1,61 @@
+# Copy to config.yaml (gitignored) and fill in. Secrets can instead come from env vars:
+#   HA_AGENT_TOKEN, HA_DISCORD_WEBHOOK_URL, HA_MAIL_PASSWORD, HA_DASHBOARD_PASSWORD
+timezone: America/Chicago
+
+llm:
+  base_url: http://spark:8000/v1          # Spark's Tailscale MagicDNS name
+  model: Qwen/Qwen3-32B                   # the served model name (GET /v1/models)
+  api_key: null                           # only if your vLLM was started with --api-key
+  temperature: 0
+  disable_thinking: true                  # sends chat_template_kwargs.enable_thinking=false
+  timeout_s: 30
+  max_tokens: 1024
+
+watch:
+  imessage:
+    allow:
+      - handle: "+1785555XXXX"            # phone (E.164) or Apple ID email
+        label: Wife
+      # - chat_id: "iMessage;+;chat123456"  # a whole group chat
+      #   label: Family group
+    allow_self_notes: false               # process messages *I* send in allowed chats
+  mail:
+    enabled: false
+    host: imap.example.com
+    port: 993
+    username: me@example.com
+    password: null                        # or HA_MAIL_PASSWORD
+    folders: [INBOX]
+    allow_senders: ["*@school.example.org"]
+    labels:                               # optional: sender pattern -> label shown in prompt/notes
+      "*@school.example.org": School
+
+rules:
+  default_alert_time: "16:00"
+  review_threshold: 0.75
+  create_missing_lists: true
+  lists:
+    default: Household
+    routes:
+      - match: [eggs, milk, bread, groceries, grocery, store, butter, cheese, produce]
+        list: Groceries
+  calendars:
+    default: Family
+    default_duration_min: 60
+    alert_minutes_before: 30
+
+alerts:
+  discord_webhook_url: null               # or HA_DISCORD_WEBHOOK_URL
+  heartbeat_timeout_s: 180
+
+dashboard:
+  public_url: http://brain:8080           # used in Discord links (Tailscale name)
+  password: null                          # optional HTTP basic auth (user "admin")
+
+security:
+  agent_token: change-me                  # mac-agent reads its copy from Keychain
+
+storage:
+  db_path: /data/brain.db
+  backup_dir: /data/backups
+  backup_keep: 14

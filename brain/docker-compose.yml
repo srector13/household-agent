@@ -1,0 +1,23 @@
+services:
+  brain:
+    build: .
+    image: household-brain:latest
+    container_name: household-brain
+    restart: unless-stopped
+    # Bind to the host's Tailscale IP so the dashboard/API are only reachable on the tailnet:
+    #   BIND_ADDR=$(tailscale ip -4) docker compose up -d
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:8080:8080"
+    volumes:
+      - ../config.yaml:/config/config.yaml:ro
+      - ./data:/data
+    environment:
+      - TZ=America/Chicago
+      # Secrets may be supplied here (or in a .env file next to this compose file) instead of config.yaml
+      - HA_AGENT_TOKEN
+      - HA_DISCORD_WEBHOOK_URL
+      - HA_MAIL_PASSWORD
+      - HA_DASHBOARD_PASSWORD
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }

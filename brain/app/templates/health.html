@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Health{% endblock %}
+{% block content %}
+<h1>Health</h1>
+{% set a = h.agent %}
+<div class="card">
+  <h2><span class="dot {{ 'ok' if a.online else 'bad' }}"></span> Mac agent</h2>
+  {% if a.agent_version %}
+  <dl class="kv">
+    <dt>Last heartbeat</dt><dd>{{ a.last_seen_s_ago }} s ago</dd>
+    <dt>Version</dt><dd>{{ a.agent_version }}</dd>
+    <dt>Full Disk Access</dt><dd>{{ "✅" if a.fda_ok else "❌" }}</dd>
+    <dt>Reminders</dt><dd>{{ "✅" if a.reminders_ok else "❌" }}</dd>
+    <dt>Calendar</dt><dd>{{ "✅" if a.calendar_ok else "❌" }}</dd>
+    <dt>Last ROWID</dt><dd>{{ a.last_rowid }}</dd>
+    <dt>Buffered events</dt><dd>{{ a.buffered_events }}</dd>
+    <dt>Agent uptime</dt><dd>{{ (a.uptime_s / 3600)|round(1) }} h</dd>
+  </dl>
+  {% else %}<p>No heartbeat received yet.</p>{% endif %}
+</div>
+<div class="card">
+  <h2><span class="dot {{ 'ok' if h.llm.reachable else 'bad' }}"></span> LLM (vLLM)</h2>
+  <dl class="kv">
+    <dt>Endpoint</dt><dd>{{ h.llm.base_url }}</dd>
+    <dt>Model</dt><dd>{{ h.llm.model }}</dd>
+    <dt>Latency</dt><dd>{{ h.llm.latency_ms or "—" }} ms</dd>
+    <dt>Failed calls</dt><dd>{{ h.llm.fail_streak }}</dd>
+    {% if h.llm.last_error %}<dt>Last error</dt><dd>{{ h.llm.last_error }}</dd>{% endif %}
+    <dt>Prompt</dt><dd>{{ prompt_version }}</dd>
+  </dl>
+</div>
+<div class="card">
+  <h2>Brain</h2>
+  <dl class="kv">
+    <dt>Version</dt><dd>{{ version }}</dd>
+    <dt>Uptime</dt><dd>{{ (h.brain_uptime_s / 3600)|round(1) }} h</dd>
+    <dt>Command queue</dt><dd>{{ h.queue_depth }}</dd>
+    <dt>Mail listener</dt><dd>{{ h.mail.state }}{% if h.mail.error %} — {{ h.mail.error }}{% endif %}{% if h.mail.last_message_at %} · last mail {{ h.mail.last_message_at|localtime }}{% endif %}</dd>
+    <dt>Last backup</dt><dd>{% if last_backup %}{{ last_backup.at|localtime }}{% else %}never{% endif %}</dd>
+  </dl>
+</div>
+<div class="card">
+  <h2>Recent alerts</h2>
+  <table>{% for al in alerts %}<tr><td style="white-space:nowrap">{{ al.created_at|localtime }}</td><td>{{ al.message }}{% if not al.delivered %} <small>(not delivered)</small>{% endif %}</td></tr>{% else %}<tr><td>None.</td></tr>{% endfor %}</table>
+</div>
+{% endblock %}

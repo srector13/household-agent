@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Stats{% endblock %}
+{% block content %}
+<h1>Last {{ days }} days</h1>
+<div class="grid" style="margin-bottom:12px">
+  <div class="card stat"><div class="n">{{ s.total }}</div><div class="l">messages</div></div>
+  <div class="card stat"><div class="n">{{ s.pct_actionable if s.pct_actionable is not none else "—" }}{% if s.pct_actionable is not none %}%{% endif %}</div><div class="l">actionable (of {{ s.extracted }} sent to LLM)</div></div>
+  <div class="card stat"><div class="n">{{ s.avg_latency_ms or "—" }}{% if s.avg_latency_ms %} ms{% endif %}</div><div class="l">avg extraction · p90 {{ s.p90_latency_ms or "—" }}</div></div>
+  <div class="card stat"><div class="n">{{ s.failures }}</div><div class="l">failed events · {{ s.commands_failed }} failed commands</div></div>
+</div>
+<div class="card">
+  <h2>Messages per day</h2>
+  <div class="bars">{% for d, n in s.per_day.items() %}<div title="{{ d }}: {{ n }}" style="height:{{ (100 * n / s.max_day)|round }}%"></div>{% endfor %}</div>
+  <div class="bars-l">{% for d in s.per_day %}<span>{{ d[8:] }}</span>{% endfor %}</div>
+</div>
+<div class="card">
+  <h2>By outcome</h2>
+  <table>{% for st, n in s.by_status.items() %}<tr><td><span class="badge b-{{ badge(st)[1] }}">{{ badge(st)[0] }}</span></td><td>{{ n }}</td></tr>{% endfor %}</table>
+</div>
+{% endblock %}

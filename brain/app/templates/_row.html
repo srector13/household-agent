@@ -1,0 +1,14 @@
+{% set b = badge(e.status) %}
+<a class="row" id="ev-{{ e.id }}" data-event="{{ e.event_id }}" href="/events/{{ e.event_id|urlencode }}">
+  <div class="top">
+    <span class="who">{{ e.sender_label or e.sender_handle or "?" }}</span>
+    <span>{{ "✉️" if e.source == "mail" else "💬" }}</span>
+    <span>{{ e.received_at|localtime }}</span>
+    <span class="spacer"></span>
+    <span class="badge b-{{ b[1] }}">{{ b[0] }}</span>
+  </div>
+  <div class="snip">{% if e.subject %}<b>{{ e.subject }}</b> — {% endif %}{{ e.text }}</div>
+  {% if e.extraction and e.extraction.actions %}
+  <div class="sub">→ {% for a in e.extraction.actions %}{{ "📅" if a.type == "create_event" else "☑️" }} {{ a.title }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+  {% elif e.reason %}<div class="sub">{{ e.reason }}</div>{% endif %}
+</a>

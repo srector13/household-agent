@@ -1,0 +1,12 @@
+config.yaml
+*.db
+*.db-*
+brain/data/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+mac-agent/.build/
+.DS_Store
+.env
