@@ -6,6 +6,7 @@ public actor Agent {
     public let config: AgentConfig
     private let client: BrainClient
     private let store: ItemStore
+    private let organizer: ReminderOrganizer
     private let executor: CommandExecutor
     private let checkpoint: Checkpoint
     private let buffer: OfflineBuffer
@@ -31,13 +32,15 @@ public actor Agent {
     private let sendWakeup = Wakeup()
 
     public init(config: AgentConfig, client: BrainClient, store: ItemStore,
+                organizer: ReminderOrganizer = NoReminderOrganizer(),
                 stateURL: URL = AgentPaths.state, bufferURL: URL = AgentPaths.buffer,
                 syncedConfigURL: URL = AgentPaths.syncedConfig,
                 backfill: Int? = nil, timeZone: TimeZone = .current) {
         self.config = config
         self.client = client
         self.store = store
-        self.executor = CommandExecutor(store: store)
+        self.organizer = organizer
+        self.executor = CommandExecutor(store: store, organizer: organizer)
         self.checkpoint = Checkpoint(url: stateURL)
         self.buffer = OfflineBuffer(url: bufferURL)
         self.backfill = backfill
@@ -307,7 +310,8 @@ public actor Agent {
             uptimeS: Int(Date().timeIntervalSince(startedAt)),
             bufferedEvents: buffer.count,
             allowlistVersion: allowlistVersion,
-            allowlistSize: allowlistSize
+            allowlistSize: allowlistSize,
+            reminderkitOk: await organizer.lastKnownAvailability()
         )
     }
 
@@ -396,6 +400,9 @@ public actor Agent {
     /// Runs forever.
     public func run() async {
         Log.info("mac-agent \(AgentInfo.version) starting; brain=\(config.brainURL) chat.db=\(config.chatDBURL.path)")
+        // Cheap probe (classes + selectors only) so the first heartbeat reports reminderkit_ok.
+        let rk = await organizer.isAvailable()
+        Log.info("ReminderKit sections/tags: \(rk ? "available" : "unavailable — reminders that ask for a section or tags use the title fallback")")
         if config.syncAllowlist {
             if let a = allowlist { Log.info("using cached allowlist v\(a.settingsVersion) until the brain answers") }
             await syncAllowlist()
@@ -411,6 +418,7 @@ public actor Agent {
 
     /// Single pass for debugging (`--once`).
     public func runOnce() async {
+        _ = await organizer.isAvailable()
         if config.syncAllowlist { await syncAllowlist() }
         let queued = scan()
         Log.info("once: queued \(queued) event(s)")

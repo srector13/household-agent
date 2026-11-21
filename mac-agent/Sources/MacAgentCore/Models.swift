@@ -69,10 +69,25 @@ public struct ReminderPayload: Codable, Equatable, Sendable {
     public var tag: String?
     /// Optional link (e.g. a gift idea's product page); set as the reminder's URL.
     public var url: String?
+    /// Section inside `list` (shown as a column in Reminders' column view); created if missing.
+    /// Needs ReminderKit (private framework) — see ReminderOrganizer.
+    public var section: String?
+    /// Hashtag names without '#', already sanitized by the brain (letters/digits only).
+    public var tags: [String]?
+    /// Title to use instead of `title` when section/tags can't be applied (e.g. "Sarah · Kindle").
+    public var titleFallback: String?
+
+    /// True when the brain asked for a section or tags (i.e. ReminderKit is needed).
+    public var wantsOrganization: Bool {
+        !(section ?? "").trimmingCharacters(in: .whitespaces).isEmpty || !(tags ?? []).isEmpty
+    }
 
     public init(title: String, list: String? = nil, createListIfMissing: Bool? = true, due: String? = nil,
                 dueTime: String? = nil, alert: String? = nil, notes: String? = nil, tag: String? = nil,
-                url: String? = nil) {
+                url: String? = nil, section: String? = nil, tags: [String]? = nil, titleFallback: String? = nil) {
+        self.section = section
+        self.tags = tags
+        self.titleFallback = titleFallback
         self.title = title
         self.list = list
         self.createListIfMissing = createListIfMissing
@@ -317,11 +332,14 @@ public struct CommandResult: Codable, Equatable, Sendable {
     public var status: Status
     public var appleItemId: String?
     public var error: String?
+    /// Set when the item was created but section/tags could not be applied (status stays `done`).
+    public var warning: String?
 
-    public init(status: Status, appleItemId: String? = nil, error: String? = nil) {
+    public init(status: Status, appleItemId: String? = nil, error: String? = nil, warning: String? = nil) {
         self.status = status
         self.appleItemId = appleItemId
         self.error = error
+        self.warning = warning
     }
 
     public static func done(_ id: String?) -> CommandResult { CommandResult(status: .done, appleItemId: id) }
@@ -333,9 +351,18 @@ public struct CommandResult: Codable, Equatable, Sendable {
         try c.encode(status, forKey: .status)
         try c.encode(appleItemId, forKey: .appleItemId)
         try c.encode(error, forKey: .error)
+        try c.encode(warning, forKey: .warning)
     }
 
-    enum CodingKeys: String, CodingKey { case status, appleItemId, error }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        status = try c.decode(Status.self, forKey: .status)
+        appleItemId = try c.decodeIfPresent(String.self, forKey: .appleItemId)
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        warning = try c.decodeIfPresent(String.self, forKey: .warning)
+    }
+
+    enum CodingKeys: String, CodingKey { case status, appleItemId, error, warning }
 }
 
 /// POST /api/agent/heartbeat body.
@@ -351,10 +378,13 @@ public struct Heartbeat: Codable, Equatable, Sendable {
     public var allowlistVersion: Int?
     /// Number of handles + chat ids in the active prefilter.
     public var allowlistSize: Int
+    /// nil = never probed; true = ReminderKit sections + tags usable on this macOS; false = not available.
+    public var reminderkitOk: Bool?
 
     public init(agentVersion: String = AgentInfo.version, lastRowid: Int64, fdaOk: Bool, remindersOk: Bool,
                 calendarOk: Bool, uptimeS: Int, bufferedEvents: Int, allowlistVersion: Int? = nil,
-                allowlistSize: Int = 0) {
+                allowlistSize: Int = 0, reminderkitOk: Bool? = nil) {
+        self.reminderkitOk = reminderkitOk
         self.agentVersion = agentVersion
         self.lastRowid = lastRowid
         self.fdaOk = fdaOk
@@ -368,7 +398,7 @@ public struct Heartbeat: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case agentVersion, lastRowid, fdaOk, remindersOk, calendarOk, uptimeS, bufferedEvents
-        case allowlistVersion, allowlistSize
+        case allowlistVersion, allowlistSize, reminderkitOk
     }
 
     public init(from decoder: Decoder) throws {
@@ -382,6 +412,7 @@ public struct Heartbeat: Codable, Equatable, Sendable {
         bufferedEvents = try c.decode(Int.self, forKey: .bufferedEvents)
         allowlistVersion = try c.decodeIfPresent(Int.self, forKey: .allowlistVersion)
         allowlistSize = try c.decodeIfPresent(Int.self, forKey: .allowlistSize) ?? 0
+        reminderkitOk = try c.decodeIfPresent(Bool.self, forKey: .reminderkitOk)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -395,5 +426,6 @@ public struct Heartbeat: Codable, Equatable, Sendable {
         try c.encode(bufferedEvents, forKey: .bufferedEvents)
         try c.encode(allowlistVersion, forKey: .allowlistVersion)  // explicit null when unsynced
         try c.encode(allowlistSize, forKey: .allowlistSize)
+        try c.encode(reminderkitOk, forKey: .reminderkitOk)  // explicit null when never probed
     }
 }

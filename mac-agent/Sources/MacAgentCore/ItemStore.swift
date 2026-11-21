@@ -16,15 +16,19 @@ public protocol ItemStore: Sendable {
     /// Applies `changes` (only `.set` / `.clear` fields) and appends `notesAppend` to the notes,
     /// keeping [ha:] tag lines last. Returns false if no item with that identifier exists.
     func updateItem(id: String, kind: ItemKind, changes: ItemChanges, notesAppend: String?) async throws -> Bool
+    /// EKCalendar.calendarIdentifier of the list holding this reminder (needed for sections).
+    func listIdentifier(ofReminder id: String) async throws -> String?
     func permissionFlags() async -> (reminders: Bool, calendar: Bool)
 }
 
 /// Applies brain commands to an ItemStore, enforcing tag-based idempotency.
 public struct CommandExecutor: Sendable {
     public let store: ItemStore
+    public let organizer: ReminderOrganizer
 
-    public init(store: ItemStore) {
+    public init(store: ItemStore, organizer: ReminderOrganizer = NoReminderOrganizer()) {
         self.store = store
+        self.organizer = organizer
     }
 
     public func execute(_ cmd: AgentCommand) async -> CommandResult {
@@ -37,9 +41,7 @@ public struct CommandExecutor: Sendable {
                     Log.info("cmd \(cmd.commandId): reminder already exists for \(tag)")
                     return .done(existing)
                 }
-                let id = try await store.createReminder(p)
-                Log.info("cmd \(cmd.commandId): created reminder '\(p.title)' in \(p.list ?? "default")")
-                return .done(id)
+                return try await createReminder(p, commandId: cmd.commandId)
             case .createEvent(let p):
                 guard let start = AppleDate.parseISO8601(p.start) else {
                     return .failed("invalid start '\(p.start)'")
@@ -96,6 +98,45 @@ public struct CommandExecutor: Sendable {
         } catch {
             Log.error("cmd \(cmd.commandId) failed: \(error)")
             return .failed(String(describing: error))
+        }
+    }
+
+    /// Creates the reminder, then (if asked) puts it in a section and tags it via the organizer.
+    /// Whenever that can't be done the reminder still gets created, titled with `title_fallback`,
+    /// and the result carries a `warning` — status stays `done`.
+    private func createReminder(_ p: ReminderPayload, commandId: String) async throws -> CommandResult {
+        let tags = (p.tags ?? []).filter { !$0.isEmpty }
+        let section = nonEmpty(p.section?.trimmingCharacters(in: .whitespaces))
+        guard p.wantsOrganization else {
+            let id = try await store.createReminder(p)
+            Log.info("cmd \(commandId): created reminder '\(p.title)' in \(p.list ?? "default")")
+            return .done(id)
+        }
+        // Decide BEFORE creating, so an unavailable ReminderKit never leaves a mis-titled reminder.
+        guard await organizer.isAvailable() else {
+            var fallback = p
+            if let t = nonEmpty(p.titleFallback) { fallback.title = t }
+            let id = try await store.createReminder(fallback)
+            Log.info("cmd \(commandId): created reminder '\(fallback.title)' (ReminderKit unavailable, title fallback)")
+            return CommandResult(status: .done, appleItemId: id, warning: "ReminderKit unavailable — used title fallback")
+        }
+        let id = try await store.createReminder(p)
+        do {
+            guard let listId = try await store.listIdentifier(ofReminder: id) else {
+                throw OrganizerError("could not find the reminder's list")
+            }
+            try await organizer.apply(listIdentifier: listId, reminderIdentifier: id, section: section, tags: tags)
+            Log.info("cmd \(commandId): created reminder '\(p.title)' in \(p.list ?? "default")"
+                     + (section.map { " / section '\($0)'" } ?? "") + (tags.isEmpty ? "" : " tags \(tags)"))
+            return .done(id)
+        } catch {
+            Log.warn("cmd \(commandId): section/tags failed for \(id): \(error) — using title fallback")
+            if let t = nonEmpty(p.titleFallback), t != p.title {
+                _ = try? await store.updateItem(id: id, kind: .reminder, changes: ItemChanges(title: .set(t)),
+                                                notesAppend: nil)
+            }
+            return CommandResult(status: .done, appleItemId: id,
+                                 warning: "section/tags not applied (\(error)) — used title fallback")
         }
     }
 

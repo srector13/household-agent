@@ -71,9 +71,17 @@ edit queues `delete_item` for the old item before the `create_*` that replaces i
   "alert": "2026-11-20T16:00:00-06:00",  // or null = no alarm
   "notes": "From Wife: \"Can you grab eggs tomorrow? We're out\"\n[ha:imessage:48213]",
   "tag": "[ha:imessage:48213]",
-  "url": null                     // optional link, set as the item's URL (e.g. a gift idea's product page)
+  "url": null,                    // optional link, set as the item's URL (e.g. a gift idea's product page)
+  "section": "Sarah",             // optional: section in `list` (a column in Reminders' column view), created if missing
+  "tags": ["Sarah"],              // optional: hashtags without '#', letters/digits only
+  "title_fallback": "Sarah · Kindle Paperwhite"  // optional: title used when section/tags can't be applied
 }
 ```
+`section` and `tags` need Apple's **private** ReminderKit framework (EventKit has no API for
+either). The agent checks once at startup whether the needed classes/selectors exist. If they
+don't, or `use_reminderkit` is false in the agent config, it creates the reminder with
+`title_fallback` as its title instead. If applying fails after the reminder was created, it
+renames the reminder to `title_fallback`. Either way the result is `done` with a `warning`.
 `list` may be any name, including emoji and a person's name (e.g. `"🎁 Gifts for Sarah"`); it is
 matched in canonical Unicode form (then case-insensitively) and created when missing if
 `create_list_if_missing` is true.
@@ -133,8 +141,10 @@ longer exists is reported as `done`.
 ## POST /api/agent/commands/{command_id}/result
 
 ```json
-{"status": "done" | "failed", "apple_item_id": "x-apple-..." , "error": null}
+{"status": "done" | "failed", "apple_item_id": "x-apple-..." , "error": null, "warning": null}
 ```
+`warning` is set when the item was created but something optional didn't work, e.g.
+`"ReminderKit unavailable — used title fallback"`. The status is still `done`.
 `apple_item_id` = EventKit `calendarItemIdentifier`. Response `200 {"ok": true}`.
 `404` = unknown command (drop it).
 
@@ -150,12 +160,15 @@ longer exists is reported as `done`.
   "uptime_s": 3600,
   "buffered_events": 0,
   "allowlist_version": 7,
-  "allowlist_size": 3
+  "allowlist_size": 3,
+  "reminderkit_ok": true
 }
 ```
 - `allowlist_version`: `settings_version` of the allowlist the agent is filtering with, or
   `null` when it has never synced one (or sync is off).
 - `allowlist_size`: number of handles + chat ids in the active prefilter.
+- `reminderkit_ok`: `true` = sections + tags work on this Mac (private ReminderKit), `false` = not
+  available (title fallback in use), `null` = not probed yet.
 
 Response `200 {"ok": true, "settings_version": 7}`. When `settings_version` differs from the
 agent's cached `allowlist_version`, the agent refetches `GET /api/agent/config`.

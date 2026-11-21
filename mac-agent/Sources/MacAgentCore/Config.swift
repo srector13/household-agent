@@ -28,6 +28,9 @@ public struct AgentConfig: Codable, Equatable, Sendable {
     /// KeepAlive would turn into a crash loop on the same row. Off by default; the pure-Swift parser
     /// handles the common case.
     public var useNSUnarchiverFallback: Bool
+    /// Use Apple's private ReminderKit for list sections + #tags. When false (or unavailable),
+    /// reminders that ask for a section/tags are created with the brain's title fallback.
+    public var useReminderKit: Bool
 
     enum CodingKeys: String, CodingKey {
         case brainURL = "brain_url"
@@ -43,6 +46,7 @@ public struct AgentConfig: Codable, Equatable, Sendable {
         case heartbeatIntervalS = "heartbeat_interval_s"
         case longPollWaitS = "long_poll_wait_s"
         case useNSUnarchiverFallback = "use_nsunarchiver_fallback"
+        case useReminderKit = "use_reminderkit"
     }
 
     public init(
@@ -58,8 +62,10 @@ public struct AgentConfig: Codable, Equatable, Sendable {
         pollIntervalS: Double = 60,
         heartbeatIntervalS: Double = 60,
         longPollWaitS: Int = 30,
-        useNSUnarchiverFallback: Bool = false
+        useNSUnarchiverFallback: Bool = false,
+        useReminderKit: Bool = true
     ) {
+        self.useReminderKit = useReminderKit
         self.brainURL = brainURL
         self.keychainService = keychainService
         self.keychainAccount = keychainAccount
@@ -91,6 +97,7 @@ public struct AgentConfig: Codable, Equatable, Sendable {
         heartbeatIntervalS = try c.decodeIfPresent(Double.self, forKey: .heartbeatIntervalS) ?? d.heartbeatIntervalS
         longPollWaitS = try c.decodeIfPresent(Int.self, forKey: .longPollWaitS) ?? d.longPollWaitS
         useNSUnarchiverFallback = try c.decodeIfPresent(Bool.self, forKey: .useNSUnarchiverFallback) ?? d.useNSUnarchiverFallback
+        useReminderKit = try c.decodeIfPresent(Bool.self, forKey: .useReminderKit) ?? d.useReminderKit
     }
 
     public static func load(from url: URL) throws -> AgentConfig {

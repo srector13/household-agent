@@ -196,6 +196,26 @@ public actor EventKitService: ItemStore {
 
     // MARK: Update
 
+    public func listIdentifier(ofReminder id: String) async throws -> String? {
+        guard Self.hasRemindersAccess() else { throw ItemStoreError("no Reminders access") }
+        guard let r = store.calendarItem(withIdentifier: id) as? EKReminder else { return nil }
+        return r.calendar?.calendarIdentifier
+    }
+
+    // MARK: Probe helpers (mac-agent --probe-reminderkit --write)
+
+    /// Identifier of the reminder list with this exact name, if it exists.
+    public func reminderListIdentifier(named name: String) -> String? {
+        let wanted = Self.canonical(name)
+        return store.calendars(for: .reminder).first { Self.canonical($0.title) == wanted }?.calendarIdentifier
+    }
+
+    /// Deletes a reminder list (used only to clean up the probe's own test list).
+    public func deleteReminderList(identifier: String) throws {
+        guard let cal = store.calendar(withIdentifier: identifier) else { return }
+        try store.removeCalendar(cal, commit: true)
+    }
+
     public func updateItem(id: String, kind: ItemKind, changes ch: ItemChanges, notesAppend: String?) async throws -> Bool {
         guard let item = store.calendarItem(withIdentifier: id) else { return false }
         if let title = ch.title.value { item.title = title }

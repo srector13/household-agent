@@ -162,5 +162,35 @@ actor FakeItemStore: ItemStore {
         return true
     }
 
+    func listIdentifier(ofReminder id: String) async throws -> String? {
+        items[id].map { "list:" + ($0.list ?? "default") }
+    }
+
     func permissionFlags() async -> (reminders: Bool, calendar: Bool) { (true, true) }
+}
+
+/// Records what the executor asked to organize; can be unavailable or fail on apply.
+actor FakeOrganizer: ReminderOrganizer {
+    struct Call: Equatable { var list: String; var reminder: String; var section: String?; var tags: [String] }
+    var available: Bool
+    var failApply: Bool
+    var calls: [Call] = []
+    var availabilityChecks = 0
+
+    init(available: Bool = true, failApply: Bool = false) {
+        self.available = available
+        self.failApply = failApply
+    }
+
+    func isAvailable() async -> Bool {
+        availabilityChecks += 1
+        return available
+    }
+
+    func lastKnownAvailability() async -> Bool? { availabilityChecks == 0 ? nil : available }
+
+    func apply(listIdentifier: String, reminderIdentifier: String, section: String?, tags: [String]) async throws {
+        if failApply { throw OrganizerError("boom") }
+        calls.append(Call(list: listIdentifier, reminder: reminderIdentifier, section: section, tags: tags))
+    }
 }

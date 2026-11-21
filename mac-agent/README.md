@@ -5,7 +5,9 @@ launchd, that:
 
 - watches `~/Library/Messages/chat.db` (read-only) and POSTs new messages to the brain,
 - long-polls the brain for commands and applies them to Reminders / Calendar via EventKit,
-- sends a heartbeat every 60 s (version, last ROWID, permission flags, outbox depth).
+- sends a heartbeat every 60 s (version, last ROWID, permission flags, outbox depth),
+- optionally files reminders into list sections (column view) and #tags them via Apple's private
+  ReminderKit, falling back to a "Person · Title" title when that isn't possible.
 
 It only makes **outbound** connections. The wire contract is in [`../docs/API.md`](../docs/API.md).
 
@@ -22,10 +24,13 @@ Sources/MacAgentCore/
   FileWatcher.swift           DispatchSource on chat.db and chat.db-wal (500 ms debounce in Agent)
   EventKitService.swift       reminders / events / update / delete, tag-based idempotency
   ItemStore.swift             EventKit abstraction + CommandExecutor
+  ReminderOrganizer.swift     sections + #tags abstraction (title fallback when unavailable)
+  ReminderKitOrganizer.swift  ReminderKit backend: serial queue, timeout, cached availability
   BrainClient.swift           HTTP client (bearer token)
   OfflineBuffer.swift         durable JSONL outbox
   Checkpoint.swift            state.json (last ROWID)
   Config.swift, Keychain.swift, Logger.swift, AppleDate.swift, Models.swift, Wakeup.swift
+Sources/CReminderKit/         Objective-C bridge to the private ReminderKit framework (macOS only)
 Tests/MacAgentCoreTests/      unit tests (decoder, dates, payloads, outbox, checkpoint, chat.db fixtures)
 launchd/com.household.mac-agent.plist
 scripts/install.sh  uninstall.sh  setup-mac-power.sh  entitlements.plist
@@ -114,6 +119,7 @@ Never grant Full Disk Access to Terminal or a Python interpreter for this — on
 | `poll_interval_s` | `60` | Safety poll in case a file event is missed |
 | `heartbeat_interval_s` | `60` | |
 | `long_poll_wait_s` | `30` | `wait` for `GET /api/agent/commands` |
+| `use_reminderkit` | `true` | Put reminders into list **sections** (Reminders' column view) and add **#tags** using Apple's private ReminderKit framework (see below). `false` = always use the brain's title fallback (e.g. "Sarah · Kindle Paperwhite"). |
 | `use_nsunarchiver_fallback` | `false` | Also try `NSUnarchiver` when the pure-Swift decoder fails. Off by default: malformed blobs can raise an uncatchable Objective-C exception, which under `KeepAlive` would crash-loop on the same row. |
 
 To store or rotate the token by hand:
@@ -143,6 +149,13 @@ security add-generic-password -U -s com.household.mac-agent -a agent_token -w '<
   note) and `delete_item` find the item by its identifier, falling back to the tag. Deleting an item that
   is already gone is reported as `done`; updating one that can't be found is `failed`. Creates may carry
   a `url` (shown on the reminder/event), and list names may include emoji and people's names.
+- **Sections + tags:** a `create_reminder` may carry `section` (e.g. the person's name, so column
+  view shows one column per person) and `tags` (`#Sarah`). EventKit can't do either, so the agent
+  creates the reminder with EventKit as usual and then applies section + tags through Apple's
+  **private** ReminderKit framework (see "ReminderKit" below). If ReminderKit is unavailable, the
+  reminder is created with the brain's `title_fallback` ("Sarah · Kindle Paperwhite"). If applying
+  fails afterwards, it is renamed to that title. Either way the result is `done` with a `warning`,
+  which the brain shows on the dashboard.
 - `sender_handle` for messages you sent (`is_from_me: true`) is the other party's handle in 1:1 chats
   and the chat identifier in group chats.
 
@@ -150,10 +163,50 @@ security add-generic-password -U -s com.household.mac-agent -a agent_token -w '<
 
 ```
 mac-agent [--config PATH] [--backfill N] [--once] [--request-permissions] [--version]
+mac-agent --probe-reminderkit [--write [--list NAME] [--keep]]
 ```
 
 `--once` does a single scan / delivery / command poll (`wait=0`) / heartbeat and exits — handy with
 `log_level: debug` when setting up.
+
+## ReminderKit (sections + tags)
+
+Apple's public Reminders API (EventKit) can't put a reminder into a section or tag it. The agent
+uses the private `ReminderKit.framework` for that, through a small Objective-C bridge
+(`Sources/CReminderKit/HAReminderKit.m`). **This is unsupported, undocumented API.** It is based on
+public reverse-engineering notes from other projects, reported working on recent macOS (14–26),
+but it has never been run on this project's build machine. A macOS update can break it at any
+time. The bridge is written so that breaking can't crash the agent:
+
+- ReminderKit is loaded with `dlopen` and every class and selector is checked before use. Every
+  call is wrapped in `@try/@catch`, runs on its own queue and has a 20 s timeout. A timeout
+  switches ReminderKit off until the next restart.
+- Whenever it isn't available, reminders still get created, titled with the brain's fallback
+  ("Sarah · Kindle Paperwhite"), and the heartbeat reports `reminderkit_ok: false`.
+- Set `"use_reminderkit": false` in config.json to switch it off entirely.
+
+Check it on your Mac:
+
+```sh
+BIN="$HOME/Library/Application Support/HouseholdAgent/bin/mac-agent"
+"$BIN" --probe-reminderkit                 # which classes/selectors exist (read-only)
+"$BIN" --probe-reminderkit --write         # create a test reminder in "Household Agent probe" with
+                                           # section "Probe" + #haprobe, read it back, delete it
+"$BIN" --probe-reminderkit --write --keep  # same, but keep it so you can look at View → as Columns
+```
+
+**Crash guard.** A private method whose signature changed in a macOS update can crash the agent
+outright (an ObjC exception would be caught; a bad call can't be). Each ReminderKit call is
+bracketed by `~/Library/Application Support/HouseholdAgent/reminderkit.inflight`. If the agent
+starts and finds that file, the last run died inside ReminderKit, so it leaves sections and tags
+off and uses the "Person · Title" fallback. The System page shows "unavailable". Once
+`--probe-reminderkit --write` passes, it deletes the file; restart the agent to turn them back on.
+
+
+`--write` needs Reminders access for the binary, the same as the agent. A `RESULT: sections + tags
+work on this Mac` line means it's good to go. Some macOS versions don't expose a way to read a
+section back, so the probe may report the section as "not readable". In that case, check the
+list in column view with `--keep`.
 
 ## Files & logs
 
@@ -189,6 +242,7 @@ charge limiting, automatic login and update settings.
 | `brain unreachable … event(s) buffered` | Brain down or Tailscale disconnected; events are kept in `outbox.jsonl` and sent when it is back. |
 | Texts show up in Messages but not the dashboard | Check the allowlist on the dashboard's Settings page and the agent's `allowlist_version` on the Health page (it should match the brain's settings version). The log says "holding N event(s) until the allowlist is synced" if the agent has never reached `/api/agent/config`. Run with `log_level: debug` to see per-ROWID skip reasons. |
 | Messages from before install never appear | Expected — first run does not backfill. Use `--backfill N`. |
+| Gift ideas etc. titled "Sarah · …" instead of sitting in a "Sarah" column / dashboard shows a ReminderKit warning | ReminderKit isn't working on this macOS (`reminderkit_ok: false`). Run `--probe-reminderkit` and see the log line "ReminderKit unavailable". Everything else keeps working. |
 | Agent restarts repeatedly | `stderr.log`; `launchctl print gui/$(id -u)/com.household.mac-agent`. |
 
 Uninstall: `./scripts/uninstall.sh` (add `--purge` to remove config/state/logs/token).

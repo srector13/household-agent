@@ -7,6 +7,23 @@ import Foundation
 let packageDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
 let infoPlist = "\(packageDir)/Sources/MacAgent/Info.plist"
 
+// Objective-C bridge to Apple's private ReminderKit (Reminders sections + tags). Only declared when
+// building on macOS: SwiftPM can't build Objective-C on Linux, where the logic is tested with a fake.
+#if os(macOS)
+let reminderKitTargets: [Target] = [
+    .target(
+        name: "CReminderKit",
+        path: "Sources/CReminderKit",
+        cSettings: [.unsafeFlags(["-fobjc-arc"])],
+        linkerSettings: [.linkedFramework("Foundation")]
+    ),
+]
+let reminderKitDeps: [Target.Dependency] = ["CReminderKit"]
+#else
+let reminderKitTargets: [Target] = []
+let reminderKitDeps: [Target.Dependency] = []
+#endif
+
 let package = Package(
     name: "MacAgent",
     platforms: [.macOS(.v14)],
@@ -21,7 +38,7 @@ let package = Package(
             name: "MacAgentCore",
             dependencies: [
                 .target(name: "CSQLite", condition: .when(platforms: [.linux])),
-            ],
+            ] + reminderKitDeps,
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
             ]
@@ -43,5 +60,5 @@ let package = Package(
             name: "MacAgentCoreTests",
             dependencies: ["MacAgentCore"]
         ),
-    ]
+    ] + reminderKitTargets
 )
