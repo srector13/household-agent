@@ -31,6 +31,11 @@ public actor Agent {
     private let scanWakeup = Wakeup()
     private let sendWakeup = Wakeup()
 
+    // Completion sync (see ItemStatus.swift)
+    private var statusSchedule = StatusSyncSchedule()
+    private var statusSyncRunning = false
+    private let statusWakeup = Wakeup()
+
     public init(config: AgentConfig, client: BrainClient, store: ItemStore,
                 organizer: ReminderOrganizer = NoReminderOrganizer(),
                 stateURL: URL = AgentPaths.state, bufferURL: URL = AgentPaths.buffer,
@@ -274,6 +279,7 @@ public actor Agent {
             let result = await executor.execute(cmd)
             await report(cmd, result)
         }
+        if !commands.isEmpty { await noteCommandsExecuted() }
         return commands.count
     }
 
@@ -295,6 +301,85 @@ public actor Agent {
         // The brain re-delivers unacknowledged commands after the lease expires; the tag check
         // makes that safe.
         Log.error("giving up on result for \(cmd.commandId); brain will re-deliver it")
+    }
+
+    // MARK: Completion sync
+
+    public enum StatusSyncResult: Equatable, Sendable {
+        case disabled
+        case busy
+        case synced(tracked: Int, reported: Int)
+        case failed(String)
+    }
+
+    public var statusSyncDisabled: Bool { statusSchedule.disabled }
+    public var statusSyncInterval: TimeInterval { statusSchedule.interval }
+
+    /// Schedules a (debounced) status sync after commands ran, so the brain hears about the result
+    /// of e.g. a re-created item quickly.
+    func noteCommandsExecuted(at t: Date = Date()) async {
+        guard !statusSchedule.disabled else { return }
+        statusSchedule.noteCommand(at: t)
+        await statusWakeup.signal()
+    }
+
+    /// When the next status sync is due (nil = disabled). Exposed for tests.
+    var nextStatusSync: Date? { statusSchedule.nextRun }
+
+    /// One completion-sync round: GET tracked items, look each up, POST the reports in batches.
+    @discardableResult
+    public func syncItemStatus() async -> StatusSyncResult {
+        guard !statusSchedule.disabled else { return .disabled }
+        guard !statusSyncRunning else { return .busy }
+        statusSyncRunning = true
+        defer { statusSyncRunning = false }
+        let tracked: TrackedList
+        do {
+            tracked = try await client.fetchTracked()
+        } catch let e as BrainError where e.status == 404 {
+            Log.warn("brain has no /api/agent/tracked (older version); completion sync off until restart")
+            statusSchedule.disable()
+            return .disabled
+        } catch {
+            statusSchedule.noteSynced()
+            Log.warn("completion sync: could not fetch tracked items: \(error)")
+            return .failed(String(describing: error))
+        }
+        statusSchedule.setInterval(tracked.intervalS)
+        await store.refreshForStatusSync()
+        let reports = await ItemStatusChecker(store: store).reports(for: Array(tracked.items.prefix(500)))
+        var sent = 0
+        do {
+            var i = 0
+            while i < reports.count {
+                let batch = Array(reports[i..<min(i + 200, reports.count)])
+                try await client.postItemStatus(batch)
+                sent += batch.count
+                i += 200
+            }
+        } catch {
+            statusSchedule.noteSynced()
+            Log.warn("completion sync: posting status failed after \(sent) item(s): \(error)")
+            return .failed(String(describing: error))
+        }
+        statusSchedule.noteSynced()
+        let missing = reports.filter { !$0.exists }.count
+        let done = reports.filter { $0.completed == true }.count
+        Log.debug("completion sync: \(tracked.items.count) tracked, \(sent) reported (\(done) completed, \(missing) missing)")
+        return .synced(tracked: tracked.items.count, reported: sent)
+    }
+
+    private func statusSyncLoop() async {
+        while !Task.isCancelled {
+            guard let due = statusSchedule.nextRun else { return }  // disabled (older brain)
+            let wait = due.timeIntervalSinceNow
+            if wait > 0 {
+                await statusWakeup.wait(timeout: wait)
+                await statusWakeup.drain()
+                continue  // re-evaluate: a command may have moved the due time earlier
+            }
+            await syncItemStatus()
+        }
     }
 
     // MARK: Heartbeat
@@ -413,6 +498,7 @@ public actor Agent {
             group.addTask { await self.sendLoop() }
             group.addTask { await self.commandLoop() }
             group.addTask { await self.heartbeatLoop() }
+            group.addTask { await self.statusSyncLoop() }
         }
     }
 
@@ -430,6 +516,8 @@ public actor Agent {
         } catch {
             Log.error("once: command poll failed: \(error)")
         }
+        let statusResult = await syncItemStatus()
+        Log.info("once: completion sync → \(statusResult)")
         do {
             try await sendHeartbeat()
             Log.info("once: heartbeat sent")

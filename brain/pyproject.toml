@@ -1,6 +1,6 @@
 [project]
 name = "household-brain"
-version = "0.4.0"
+version = "0.5.0"
 description = "Household agent brain: ingest messages, extract tasks with a local LLM, queue Apple Reminders/Calendar commands."
 requires-python = ">=3.12"
 dependencies = [

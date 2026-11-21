@@ -16,7 +16,8 @@ from typing import Any
 
 from .config import Config, load_config
 from .extract import LLMClient, LLMError, PromptTemplate, VLLMClient, extract
-from .gate import gate
+from .config import AllowEntry
+from .gate import gate, sounds_like_commitment
 from .planner import plan
 from .schemas import Event
 
@@ -49,6 +50,7 @@ def case_open_items(case: dict[str, Any], cfg: Config) -> list[dict[str, Any]]:
             state = {"calendar": cfg.rules.calendars.default, "start": start.isoformat(),
                      "end": (start + timedelta(hours=1)).isoformat(), "all_day": False}
         out.append({"item_id": f"eval_itm_{i}", "kind": it["kind"], "collection": it.get("collection"),
+                    "category": it.get("category") or ("event" if it["kind"] == "event" else "todo"),
                     "person": it.get("person", case.get("sender", "Wife")), "title": it["title"], "state": state,
                     "tag": f"[ha:eval:{i}]", "apple_item_id": f"X{i}", "status": "active",
                     "created_at": case["now"]})
@@ -78,11 +80,17 @@ def _cmd_view(cmd: dict[str, Any], cfg: Config, refs: dict[str, int] | None = No
         if "start" in ch:
             view["start"] = _local(ch["start"], cfg, ch.get("all_day", False))
         return view
+    cat = (cmd.get("meta") or {}).get("category")
+    if cat in ("promise", "waiting"):
+        return {"type": "track_promise" if cat == "promise" else "waiting_on", "title": p["title"],
+                "due_date": p.get("due"), "due_time": p.get("due_time"),
+                "has_first_step": "👉 Start:" in (p.get("notes") or "")}
     if (cmd.get("meta") or {}).get("collection"):
         return {"type": "save_to_collection", "collection": cmd["meta"]["collection"], "title": p["title"],
                 "url": p.get("url"), "person": (cmd.get("new_item") or {}).get("person")}
     if cmd["op"] == "create_reminder":
         return {"type": "create_reminder", "title": p["title"], "due_date": p["due"],
+                "has_first_step": "👉 Start:" in (p.get("notes") or ""),
                 "due_time": p["due_time"]}
     return {"type": "create_event", "title": p["title"], "all_day": p["all_day"],
             "start": _local(p["start"], cfg, p["all_day"]), "end": _local(p["end"], cfg, p["all_day"])}
@@ -94,7 +102,8 @@ def _matches(exp: dict[str, Any], got: dict[str, Any]) -> list[str]:
         return [f"type {got['type']} != {exp['type']}"]
     if "title_any" in exp and not any(t.lower() in got["title"].lower() for t in exp["title_any"]):
         problems.append(f"title {got['title']!r} lacks any of {exp['title_any']}")
-    for k in ("ref", "collection", "url", "person", "due_date", "due_time", "start", "end", "all_day"):
+    for k in ("ref", "collection", "url", "person", "due_date", "due_time", "start", "end", "all_day",
+              "has_first_step"):
         if k in exp and got.get(k) != exp[k]:
             problems.append(f"{k} {got.get(k)!r} != {exp[k]!r}")
     return problems
@@ -130,8 +139,12 @@ async def run_case(cfg: Config, llm: LLMClient, tpl: PromptTemplate, case: dict[
     out: dict[str, Any] = {"id": case["id"], "text": case["text"]}
     open_items = case_open_items(case, cfg)
     refs = {it["item_id"]: i for i, it in enumerate(open_items, 1)}
+    if case.get("self"):
+        cfg = cfg.model_copy(deep=True)
+        cfg.watch.imessage.allow.append(AllowEntry(handle=ev.sender_handle, label="Me", is_me=True))
     reason = gate(cfg, ev)
-    if reason == "from_me" and open_items and cfg.rules.self_updates:
+    if reason == "from_me" and ((open_items and cfg.rules.self_updates)
+                                or (cfg.rules.track_promises and sounds_like_commitment(ev.text))):
         reason = gate(cfg, ev.model_copy(update={"is_from_me": False}))
     if reason:
         out.update(commands=[], gate=reason, ms=0)

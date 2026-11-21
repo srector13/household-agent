@@ -11,6 +11,8 @@
   {% for a in e.extraction.actions %}
   {% if a.type == "create_event" %}<span class="pill ev">{{ icon("calendar", 14) }}{{ a.title }}</span>
   {% elif a.type == "save_to_collection" %}<span class="pill col">{{ icon("gift" if a.collection == "gift_ideas" else "bookmark", 14) }}{{ a.title }} <span class="faint">· {{ collection_label(a.collection) }}</span></span>
+  {% elif a.type == "track_promise" %}<span class="pill prom">{{ icon("handshake", 14) }}{{ a.title }}</span>
+  {% elif a.type == "waiting_on" %}<span class="pill wait">{{ icon("hourglass", 14) }}{{ a.title }}</span>
   {% elif a.type == "update_item" %}<span class="pill upd">{{ icon("pencil", 14) }}{{ ref_title(e, a.ref) }}{% if a.due_date %} → {{ a.due_date|nicedate }}{% elif a.start %} → {{ a.start|nicedate }}{% endif %}</span>
   {% elif a.type == "complete_item" %}<span class="pill rem">{{ icon("check", 14) }}Done: {{ ref_title(e, a.ref) }}</span>
   {% elif a.type == "cancel_item" %}<span class="pill can">{{ icon("x", 14) }}Cancel: {{ ref_title(e, a.ref) }}</span>
@@ -34,6 +36,9 @@
 {% elif c.op == "create_event" %}
   {% set ic, cls, t = "calendar", "ev", p.title %}
   {% set m = p.calendar ~ " · " ~ (p.start|localtime("%a %b %-d") ~ ", all day" if p.all_day else p.start|localtime ~ " – " ~ p.end|localtime("%-I:%M %p")) ~ (" · " ~ p.location if p.location else "") %}
+{% elif meta.category in ("promise", "waiting") %}
+  {% set ic, cls, t = ("handshake" if meta.category == "promise" else "hourglass"), ("prom" if meta.category == "promise" else "wait"), p.title %}
+  {% set m = p.list ~ (" · " ~ ("due " if meta.category == "promise" else "follow up ") ~ p.due if p.due else "") %}
 {% elif meta.collection %}
   {% set ic, cls, t, m = ("gift" if meta.collection == "gift_ideas" else "bookmark"), "col", p.title, p.list %}
 {% else %}

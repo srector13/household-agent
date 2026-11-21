@@ -169,6 +169,17 @@ mac-agent --probe-reminderkit [--write [--list NAME] [--keep]]
 `--once` does a single scan / delivery / command poll (`wait=0`) / heartbeat and exits — handy with
 `log_level: debug` when setting up.
 
+## Completion sync
+
+So the brain knows when you tick off, edit or delete one of its reminders on the iPhone, the agent
+periodically asks the brain which items it is tracking (`GET /api/agent/tracked`), looks each one
+up in EventKit and reports back (`POST /api/agent/item-status`): completed + when, current title,
+due date/time (reminders) or start/end (events), or that it no longer exists. Timing: ~30 s after
+start, then every few minutes (the brain decides), and a few seconds after the agent runs commands.
+The agent only says an item is gone when it is sure (store loaded, full access); permission problems
+or EventKit errors just leave the item out. Older brains without these endpoints turn the feature off.
+`--once` also runs one sync.
+
 ## ReminderKit (sections + tags)
 
 Apple's public Reminders API (EventKit) can't put a reminder into a section or tag it. The agent

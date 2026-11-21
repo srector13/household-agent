@@ -136,6 +136,27 @@ public final class BrainClient: Sendable {
         return (try? Wire.decoder().decode(HeartbeatAck.self, from: data)) ?? HeartbeatAck(ok: true, settingsVersion: nil)
     }
 
+    /// GET /api/agent/tracked — items the brain wants status for. Throws BrainError(status: 404) on a
+    /// brain that predates completion sync.
+    public func fetchTracked() async throws -> TrackedList {
+        let (data, status) = try await send(request("api/agent/tracked", method: "GET"))
+        guard (200..<300).contains(status) else {
+            throw BrainError("tracked: HTTP \(status): \(Self.snippet(data))", status: status)
+        }
+        return try Wire.decoder().decode(TrackedList.self, from: data)
+    }
+
+    /// POST /api/agent/item-status.
+    @discardableResult
+    public func postItemStatus(_ items: [ItemStatusReport]) async throws -> ItemStatusAck {
+        let body = try Wire.encoder().encode(ItemStatusBatch(items: items))
+        let (data, status) = try await send(request("api/agent/item-status", method: "POST", body: body, timeout: 30))
+        guard (200..<300).contains(status) else {
+            throw BrainError("item-status: HTTP \(status): \(Self.snippet(data))", status: status)
+        }
+        return (try? Wire.decoder().decode(ItemStatusAck.self, from: data)) ?? ItemStatusAck(ok: true, updated: nil)
+    }
+
     /// GET /api/agent/config — the brain-managed allowlist. Throws BrainError(status: 404) on a
     /// brain that predates the endpoint.
     public func fetchAgentConfig() async throws -> RemoteAgentConfig {

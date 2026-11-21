@@ -148,6 +148,15 @@ class DB:
             self._migrate()
 
     def _migrate(self) -> None:
+        icols = {r[1] for r in self.conn.execute("PRAGMA table_info(items)")}
+        if "category" not in icols:   # todo | event | collection | promise | waiting
+            self.conn.execute("ALTER TABLE items ADD COLUMN category TEXT")
+            self.conn.execute("""UPDATE items SET category = CASE WHEN collection IS NOT NULL THEN 'collection'
+                                 WHEN kind='event' THEN 'event' ELSE 'todo' END""")
+        if "missing" not in icols:    # consecutive completion-sync reports saying it's gone
+            self.conn.execute("ALTER TABLE items ADD COLUMN missing INTEGER NOT NULL DEFAULT 0")
+        if "completed_at" not in icols:
+            self.conn.execute("ALTER TABLE items ADD COLUMN completed_at TEXT")
         ecols = {r[1] for r in self.conn.execute("PRAGMA table_info(events)")}
         if "open_refs" not in ecols:
             self.conn.execute("ALTER TABLE events ADD COLUMN open_refs TEXT")

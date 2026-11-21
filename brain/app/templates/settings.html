@@ -42,6 +42,7 @@
     <a href="#people">{{ icon("users", 16) }}People & chats</a>
     <a href="#reminders">{{ icon("check-square", 16) }}Reminders & calendar</a>
     <a href="#collections">{{ icon("bookmark", 16) }}Collections</a>
+    <a href="#daily">{{ icon("sun", 16) }}Daily rhythm</a>
     <a href="#model">{{ icon("sparkles", 16) }}Model</a>
     <a href="#alerts">{{ icon("bell", 16) }}Alerts & dashboard</a>
     <a href="#mail">{{ icon("mail", 16) }}Mail</a>
@@ -84,6 +85,9 @@
         <div class="full">{{ toggle("rules.person_tags", "Tag reminders with the person (#Sarah)", "Tap the #Sarah tag in Reminders to see everything for Sarah across all lists. Needs the Mac agent's sections & tags support — see System; if it's unavailable the name goes in the title instead.") }}</div>
         <div class="full">{{ toggle("rules.person_in_title", "Always add the person's name to the title", "\"Pick up eggs · Sarah\". The name, date and a short summary are always in the notes.") }}</div>
         {{ text("rules.open_item_days", "Items stay editable for (days)", "How far back \"never mind\" or \"move it to Friday\" can reach.", "number", 'min="1" max="365"') }}
+        {{ text("rules.waiting_list", "Waiting-on list", "\"I'll get back to you Monday\" lands here, one column per person.") }}
+        {{ text("rules.waiting_default_days", "Follow up after (days)", "When nobody said when.", "number", 'min="1" max="60"') }}
+        <div class="full">{{ toggle("rules.breakdown", "Give big tasks a first step", "\"Do taxes\" gets \"👉 Start: find last year's return\" and a few steps in its notes.") }}</div>
       </div>
       {{ foot("reminders") }}
     </form>
@@ -96,6 +100,20 @@
       <div class="sec-foot"><button type="button" class="btn sm ghost" style="margin-right:auto" onclick="addCollection()">{{ icon("plus", 14) }}Add collection</button>
         <span class="status" id="status-collections">All changes saved</span><button class="btn primary" type="button" onclick="saveCollections(this)">{{ icon("check", 15) }}Save</button></div>
     </section>
+
+    <!-- DAILY -->
+    <form class="sec card" id="daily" data-section>
+      <div class="card-h"><div><h2>Daily rhythm</h2><p>A few things each morning, a short recap each evening. Unfinished picks move back off Today — no overdue pile.</p></div></div>
+      <div class="card-b fields">
+        <div class="full">{{ toggle("daily.enabled", "Plan my day automatically") }}</div>
+        {{ text("daily.morning_time", "Morning picks at", "", "time") }}
+        {{ text("daily.evening_time", "Evening recap at", "", "time") }}
+        {{ text("daily.count", "How many things a day", "3 is the sweet spot.", "number", 'min="1" max="7"') }}
+        <div class="full">{{ toggle("daily.today_view", "Put the picks in Reminders' Today view", "Undated or later items get today's date while they're picked, and their old date back in the evening if not done.") }}</div>
+        <div class="full">{{ toggle("daily.discord", "Send the briefing and recap to Discord") }}</div>
+      </div>
+      {{ foot("daily") }}
+    </form>
 
     <!-- MODEL -->
     <form class="sec card" id="model" data-section>
@@ -207,15 +225,20 @@ function renderPeople() {
     const row = document.createElement("div");
     row.className = "person" + (p.enabled === false ? " off" : "");
     row.innerHTML = `<span class="avatar"></span><div style="min-width:0"><div class="name"></div><div class="h"></div></div>
-      <div class="acts"><label class="switch" title="Watching"><input type="checkbox"><span class="track"></span></label>
+      <div class="acts"><button class="btn sm ghost me-btn" title="Mark as my own number (notes-to-self)">Me</button><label class="switch" title="Watching"><input type="checkbox"><span class="track"></span></label>
       <button class="btn sm icon ghost" title="Rename">{{ icon("pencil", 14) }}</button>
       <button class="btn sm icon ghost danger" title="Remove">{{ icon("trash", 14) }}</button></div>`;
-    row.querySelector(".avatar").textContent = p.chat_id ? "#" : initials(p.label);
+    row.querySelector(".avatar").textContent = p.is_me ? "✎" : p.chat_id ? "#" : initials(p.label);
+    const meBtn = row.querySelector(".me-btn");
+    meBtn.textContent = p.is_me ? "📝 Notes to self" : "This is me";
+    meBtn.classList.toggle("primary", !!p.is_me);
+    meBtn.onclick = () => savePeople(PEOPLE.map((q, j) => ({ ...q, is_me: j === i ? !p.is_me : q.is_me })),
+      p.is_me ? "No longer your notes-to-self thread" : `${p.label || "This"} is your notes-to-self thread`);
     row.querySelector(".name").textContent = p.label || "(no name)";
     row.querySelector(".h").textContent = p.handle || p.chat_id;
     const cb = row.querySelector("input"); cb.checked = p.enabled !== false;
     cb.onchange = () => savePeople(PEOPLE.map((q, j) => (j === i ? { ...q, enabled: cb.checked } : q)), cb.checked ? `Watching ${p.label}` : `Paused ${p.label}`);
-    const [ren, del] = row.querySelectorAll("button");
+    const [, ren, del] = row.querySelectorAll("button");
     ren.onclick = () => { const n = prompt("Name", p.label || ""); if (n !== null) savePeople(PEOPLE.map((q, j) => (j === i ? { ...q, label: n } : q)), "Renamed"); };
     del.onclick = () => { if (confirm(`Stop watching ${p.label || p.handle}?`)) savePeople(PEOPLE.filter((_, j) => j !== i), `Removed ${p.label || ""}`); };
     box.append(row);

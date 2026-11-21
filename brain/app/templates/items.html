@@ -8,13 +8,16 @@
   {% set ev = it.kind == "event" %}
   <span class="avatar" style="background:{{ 'var(--info-soft)' if ev else 'color-mix(in srgb, var(--accent-2) 16%, transparent)' if it.collection else 'var(--ok-soft)' }};color:{{ 'var(--info)' if ev else 'var(--accent-2)' if it.collection else 'var(--ok)' }}">{{ icon("calendar" if ev else "gift" if it.collection == "gift_ideas" else "bookmark" if it.collection else "check-square", 17) }}</span>
   <div style="min-width:0">
-    <div class="top"><span class="who" style="{{ 'text-decoration:line-through;opacity:.7' if it.status in ('cancelled','undone','rejected') }}">{{ it.title }}</span></div>
+    <div class="top"><span class="who" style="{{ 'text-decoration:line-through;opacity:.7' if it.status in ('cancelled','undone','rejected','deleted') }}">{% if it.category == "promise" %}{{ icon("handshake", 14) }} {% elif it.category == "waiting" %}{{ icon("hourglass", 14) }} {% endif %}{{ it.title }}</span>
+      {% if it.category == "promise" %}<span class="badge b-accent plain">promise</span>{% elif it.category == "waiting" %}<span class="badge b-info plain">waiting on {{ it.person }}</span>{% endif %}</div>
     <div class="when">
       {% if ev %}{{ st.calendar }} · {% if st.all_day %}{{ st.start|localtime("%a %b %-d") }}{% else %}{{ st.start|localtime }}{% endif %}{% if st.location %} · {{ st.location }}{% endif %}
       {% else %}{{ st.list }}{% if st.section %} › {{ st.section }}{% endif %}{% for tg in st.tags or [] %} #{{ tg }}{% endfor %}{% if st.due %} · due {{ st.due }}{% if st.due_time %} {{ st.due_time }}{% endif %}{% endif %}{% endif %}
       {% if not st.section and not st.tags %}· {{ it.person or "?" }}{% endif %}
       {% if st.url %} · <a class="link" href="{{ st.url }}" target="_blank" rel="noopener">{{ icon("link", 12) }} link</a>{% endif %}
     </div>
+    {% if st.first_step %}<div class="start">{{ icon("footprints", 13) }}<b>Start:</b> {{ st.first_step }}</div>
+    {% elif it.kind == "reminder" and it.status in ("planned", "active") and not it.collection and it.category != "waiting" %}<button class="btn sm ghost" style="padding-left:0" data-id="{{ it.item_id }}" onclick="breakdown(this)">{{ icon("footprints", 13) }}Break it down</button>{% endif %}
     {% if it.origin %}<div class="muted" style="font-size:12.5px;margin-top:3px">{{ "You" if it.origin.is_from_me else it.origin.sender_label }}: “{{ it.origin.text[:140] }}{{ "…" if it.origin.text|length > 140 }}”</div>{% endif %}
     {% if it.log|length > 1 %}
     <details class="hist"><summary class="link" style="font-size:12px">History ({{ it.log|length }})</summary>
@@ -22,7 +25,7 @@
     </details>{% endif %}
   </div>
   <div style="display:grid;gap:6px;justify-items:end">
-    <span class="badge b-{{ {'active':'ok','planned':'info','proposed':'warn','completed':'muted','failed':'bad'}.get(it.status, 'muted') }}">{{ {'active':'on Mac','planned':'sending','proposed':'in review'}.get(it.status, it.status) }}</span>
+    <span class="badge b-{{ {'active':'ok','planned':'info','proposed':'warn','completed':'muted','failed':'bad'}.get(it.status, 'muted') }}">{{ {'active':'on Mac','planned':'sending','proposed':'in review','deleted':'deleted in Reminders'}.get(it.status, it.status) }}</span>
     <a class="btn sm ghost" href="/events/{{ it.origin_event_id|urlencode }}">Open</a>
   </div>
 </div>
@@ -69,4 +72,14 @@
   </div>
 </div>
 {% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+async function breakdown(btn) {
+  HA.busy(btn, true);
+  try { const d = await HA.api("POST", `/api/items/${encodeURIComponent(btn.dataset.id)}/breakdown`);
+    HA.toast("Steps added to the reminder"); location.reload(); }
+  catch (e) { HA.toast(e.message, "bad"); HA.busy(btn, false); }
+}
+</script>
 {% endblock %}

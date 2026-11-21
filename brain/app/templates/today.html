@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Today · Household Agent{% endblock %}
+{% block heading %}Today{% endblock %}
+{% block subheading %}<div class="sub">{{ day.strftime("%A, %B %-d") }} · just these — everything else can wait</div>{% endblock %}
+{% block actions %}
+<button class="btn sm" onclick="todayAction(this, 'repick', 'New picks — moved into Reminders\' Today view')" title="Choose again">{{ icon("refresh", 15) }}<span>Re-pick</span></button>
+<button class="btn sm" onclick="todayAction(this, 'evening', 'Recap sent')" title="Send the evening recap now">{{ icon("moon", 15) }}<span>Wrap up</span></button>
+{% endblock %}
+{% block content %}
+<div class="grid g-main">
+  <div class="stack">
+    <div class="card">
+      <div class="card-h"><h2>{{ icon("sun", 16) }} Today's {{ picks|length or cfg.daily.count }}</h2>
+        {% if plan.morning_at %}<div class="right faint" style="font-size:12.5px">picked {{ plan.morning_at|localtime("%-I:%M %p") }}</div>{% endif %}</div>
+      {% if picks %}
+      <div class="list" style="margin-top:6px">
+        {% for p in picks %}{% set done = p.status == "completed" %}
+        <div class="pick {{ 'done' if done }}">
+          <span class="num">{% if done %}{{ icon("check", 16) }}{% else %}{{ loop.index }}{% endif %}</span>
+          <div style="min-width:0">
+            <div class="t">{% if p.category == "promise" %}{{ icon("handshake", 14) }} {% elif p.category == "waiting" %}{{ icon("hourglass", 14) }} {% endif %}{{ p.title }}</div>
+            <div class="why">{{ p.why or "" }}{% if p.status in ("cancelled", "deleted", "undone", "gone") %} · removed{% endif %}</div>
+            {% if p.first_step and not done %}<div class="start">{{ icon("footprints", 14) }}<b>Start:</b> {{ p.first_step }}</div>
+            {% elif p.item and not done and p.item.status in ("planned", "active") %}<div><button class="btn sm ghost" style="margin-top:4px;padding-left:0" data-id="{{ p.item_id }}" onclick="breakdown(this)">{{ icon("footprints", 14) }}Give me a first step</button></div>{% endif %}
+          </div>
+          {% if p.item %}<a class="btn sm ghost" href="/events/{{ p.item.origin_event_id|urlencode }}">Open</a>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% if plan.note %}<div class="card-b muted" style="border-top:1px solid var(--border);font-size:13.5px">✨ {{ plan.note }}</div>{% endif %}
+      {% else %}
+      <div class="empty">{{ icon("sun", 36) }}<div style="font-weight:600;color:var(--text)">Not planned yet</div>
+        <div>Your picks arrive at {{ cfg.daily.morning_time }}{% if not cfg.daily.enabled %} (turned off in Settings){% endif %}.</div>
+        <button class="btn primary" style="margin-top:12px" onclick="todayAction(this, 'repick', 'Planned')">{{ icon("sun", 15) }}Plan my day now</button></div>
+      {% endif %}
+    </div>
+
+    {% if events %}
+    <div class="card">
+      <div class="card-h"><h2>{{ icon("calendar", 16) }} Also today</h2></div>
+      <div class="card-b flush list">
+        {% for e in events %}<a class="up" href="/events/{{ e.origin_event_id|urlencode }}">
+          <div class="day"><span>{{ e.state.start|localtime("%p") }}</span><b style="font-size:14px">{{ e.state.start|localtime("%-I:%M") }}</b></div>
+          <div><div class="t">{{ e.title }}</div><div class="m">{{ e.state.calendar }}{% if e.state.location %} · {{ e.state.location }}{% endif %}</div></div></a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-h"><h2>{{ icon("check", 16) }} Done today</h2><span class="badge b-ok plain">{{ done|length }}</span></div>
+      <div class="card-b">
+        {% for d in done %}<div style="padding:3px 0">✅ {{ d.title }} <span class="faint" style="font-size:12px">{{ d.completed_at|localtime("%-I:%M %p") }}</span></div>
+        {% else %}<div class="muted" style="font-size:13.5px">Nothing ticked off yet — that's fine. One small thing counts.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><div><h2>{{ icon("moon", 16) }} Tomorrow</h2><p class="help" style="margin:2px 0 0">Pick up to {{ cfg.daily.count }}. {% if tomorrow_locked %}Saved — these will be tomorrow's picks.{% else %}Leave it and I'll choose in the morning.{% endif %}</p></div></div>
+    <form id="tomorrow" class="list" style="margin-top:8px">
+      {% for c in candidates %}
+      <label class="cand"><input type="checkbox" value="{{ c.item_id }}" {{ "checked" if c.item_id in tomorrow_chosen }}>
+        <div style="min-width:0"><div>{% if c.category == "promise" %}{{ icon("handshake", 13) }} {% elif c.category == "waiting" %}{{ icon("hourglass", 13) }} {% endif %}{{ c.title }}</div><div class="why">{{ c.why }}</div></div></label>
+      {% else %}<div class="empty" style="padding:24px">Nothing open. 🎉</div>{% endfor %}
+    </form>
+    {% if candidates %}<div class="sec-foot"><span class="status" id="tstatus"></span><button class="btn primary" onclick="saveTomorrow(this)">{{ icon("check", 15) }}Save tomorrow</button></div>{% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const MAX = {{ cfg.daily.count }};
+async function todayAction(btn, what, ok) {
+  HA.busy(btn, true);
+  try { await HA.api("POST", "/api/today/" + what); HA.toast(ok); setTimeout(() => location.reload(), 500); }
+  catch (e) { HA.toast(e.message, "bad"); } finally { HA.busy(btn, false); }
+}
+async function breakdown(btn) {
+  HA.busy(btn, true);
+  try { const d = await HA.api("POST", `/api/items/${encodeURIComponent(btn.dataset.id)}/breakdown`);
+    HA.toast("Added to the reminder's notes"); btn.parentElement.outerHTML = `<div class="start"><b>Start:</b> </div>`;
+    location.reload(); }
+  catch (e) { HA.toast(e.message, "bad"); HA.busy(btn, false); }
+}
+const boxes = [...document.querySelectorAll("#tomorrow input")];
+boxes.forEach((b) => b.addEventListener("change", () => {
+  const n = boxes.filter((x) => x.checked).length;
+  if (n > MAX) { b.checked = false; HA.toast(`Just ${MAX} — that's the point 🙂`, "bad"); }
+  document.getElementById("tstatus").textContent = "Unsaved";
+}));
+async function saveTomorrow(btn) {
+  HA.busy(btn, true);
+  try { await HA.api("POST", "/api/today/tomorrow", { item_ids: boxes.filter((x) => x.checked).map((x) => x.value) });
+    HA.toast("Tomorrow is planned"); document.getElementById("tstatus").textContent = "Saved"; }
+  catch (e) { HA.toast(e.message, "bad"); } finally { HA.busy(btn, false); }
+}
+HA.on((d) => { if (d.type === "daily" || d.type === "items") location.reload(); });
+</script>
+{% endblock %}

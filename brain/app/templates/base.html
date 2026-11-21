@@ -14,11 +14,12 @@
 <body>
 {% set NAV = [
   ("overview", "/", "dashboard", "Overview"),
+  ("today", "/today", "sun", "Today"),
   ("activity", "/activity", "activity", "Activity"),
   ("review", "/review", "review", "Review"),
-  ("items", "/items", "check-square", "Created items"),
 ] %}
 {% set NAV2 = [
+  ("items", "/items", "check-square", "Created items"),
   ("lab", "/lab", "lab", "Test lab"),
   ("system", "/system", "server", "System"),
   ("settings", "/settings", "settings", "Settings"),
@@ -27,12 +28,12 @@
   <aside class="sidebar">
     <a class="brand" href="/"><span class="logo">{{ icon("home", 18) }}</span><span>Household Agent<small>control room</small></span></a>
     <nav class="nav">
-      {% for key, href, ic, label in NAV %}
+      {% for key, href, ic, label in NAV + [NAV2[0]] %}
       <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic) }} {{ label }}
         {% if key == "review" %}<span class="count" data-review-count {{ "hidden" if not review_count }}>{{ review_count }}</span>{% endif %}</a>
       {% endfor %}
       <div class="nav-label">Tools</div>
-      {% for key, href, ic, label in NAV2 %}
+      {% for key, href, ic, label in NAV2[1:] %}
       <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic) }} {{ label }}</a>
       {% endfor %}
     </nav>
@@ -62,10 +63,10 @@
 
 <nav class="tabbar">
   {% for key, href, ic, label in NAV %}
-  <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic, 22) }}{{ label.split(' ')[-1]|capitalize if key == 'items' else label }}
+  <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic, 22) }}{{ label }}
     {% if key == "review" %}<span class="count" data-review-count {{ "hidden" if not review_count }}>{{ review_count }}</span>{% endif %}</a>
   {% endfor %}
-  <button id="more-btn" class="{{ 'on' if nav in ('lab','system','settings') }}" type="button">{{ icon("more", 22) }}More</button>
+  <button id="more-btn" class="{{ 'on' if nav in ('items','lab','system','settings') }}" type="button">{{ icon("more", 22) }}More</button>
 </nav>
 <div class="sheet" id="more-sheet">
   {% for key, href, ic, label in NAV2 %}<a href="{{ href }}">{{ icon(ic, 20) }} {{ label }}</a>{% endfor %}

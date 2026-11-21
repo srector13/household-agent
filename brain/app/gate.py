@@ -50,6 +50,30 @@ def allowlist_label(cfg: Config, ev: Event) -> tuple[bool, str | None]:
     return False, None
 
 
+def self_chat(cfg: Config, ev: Event) -> bool:
+    """Is this my notes-to-self conversation (an allowlist entry marked "this is me")?"""
+    if ev.source != "imessage":
+        return False
+    sender = normalize_handle(ev.sender_handle)
+    for entry in cfg.watch.imessage.allow:
+        if entry.enabled and entry.is_me and (
+                (entry.chat_id and entry.chat_id == ev.chat_id)
+                or (entry.handle and normalize_handle(entry.handle) == sender)):
+            return True
+    return False
+
+
+# Cheap pre-filter for my own messages: only ones that sound like a commitment or a follow-up go to the LLM.
+PROMISE_RE = re.compile(
+    r"\b(i'?ll|i will|i'?m going to|i am going to|gonna|let me|i can|i promise|will do|on it|"
+    r"get back to you|let you know|let me know|send (it|you|them)|tonight|tomorrow|this (morning|afternoon|evening|"
+    r"weekend|week)|next week|by (mon|tue|wed|thu|fri|sat|sun)|(mon|tues|wednes|thurs|fri|satur|sun)day)\b", re.I)
+
+
+def sounds_like_commitment(text: str) -> bool:
+    return bool(PROMISE_RE.search(text or ""))
+
+
 TAPBACK_RE = re.compile(
     r"^(Loved|Liked|Disliked|Laughed at|Emphasized|Questioned|Reacted .{1,8} to|"
     r"Removed an? .{1,20} from)\s+[“\"].*[”\"]\s*$",
@@ -78,7 +102,7 @@ def _is_emoji_only(text: str) -> bool:
 def gate(cfg: Config, ev: Event) -> str | None:
     """Return a skip reason, or None if the event should go to the LLM."""
     text = (ev.text or "").strip()
-    if ev.is_from_me and not cfg.watch.imessage.allow_self_notes:
+    if ev.is_from_me and not cfg.watch.imessage.allow_self_notes and not self_chat(cfg, ev):
         return "from_me"
     if not text:
         return "empty"

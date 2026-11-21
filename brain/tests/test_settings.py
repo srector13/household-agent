@@ -118,7 +118,7 @@ def test_llm_client_follows_settings_live(tmp_path, alerter):
     with TestClient(app) as c:
         c.post("/api/events?sync=true", json=msg(event_id="imessage:a", text="buy milk please"), headers=AUTH)
         c.patch("/api/settings", json={"llm": {"base_url": "http://other:9000/v1", "model": "m2"}})
-        c.post("/api/events?sync=true", json=msg(event_id="imessage:b", text="buy milk please"), headers=AUTH)
+        c.post("/api/events?sync=true", json=msg(event_id="imessage:b", text="buy bread please"), headers=AUTH)
         r = c.post("/api/settings/test-llm", json={}).json()
     assert seen[0] == ("http://localhost:8000/v1/chat/completions", "qwen")
     assert seen[1] == ("http://other:9000/v1/chat/completions", "m2")

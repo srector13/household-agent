@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
 from .config import Config
+from .gate import self_chat
 from .items import state_from_payload
 from .schemas import CREATE_TYPES, ITEM_TYPES, Action, Event, Extraction, PlannedCommand
 
@@ -88,11 +89,17 @@ def person_of(ev: Event) -> str:
     return ev.sender_label or ev.sender_handle or "someone"
 
 
-def _notes(cfg: Config, ev: Event, action: Action, tag: str, person: str) -> str:
-    """Reminders shows the first notes line under the title, so it leads with who it's from."""
+def _notes(cfg: Config, ev: Event, action: Action, tag: str, person: str, *, kind: str = "todo",
+           me: bool = False) -> str:
+    """Reminders shows the first notes lines under the title, so they lead with who and how to start."""
     when = ev.received_at.astimezone(cfg.tz).strftime("%a %b %-d")
     via = " · email" if ev.source == "mail" else ""
-    lines = [f"👤 {person} · {when}{via}"]
+    head = {"promise": f"🤝 You promised {person}", "waiting": f"⏳ Waiting on {person}"}.get(kind)
+    if me and not head:
+        head = "📝 Note to self"
+    lines = [f"{head or '👤 ' + person} · {when}{via}"]
+    if cfg.rules.breakdown and action.first_step and action.first_step.strip():
+        lines.append(f"👉 Start: {action.first_step.strip()}")
     if action.summary and action.summary.strip():
         lines.append(action.summary.strip())
     quote = _snippet(ev.text, 300)
@@ -100,6 +107,9 @@ def _notes(cfg: Config, ev: Event, action: Action, tag: str, person: str) -> str
                  else f"“{ev.subject}”: {quote}")
     if action.notes and action.notes.strip():
         lines.append(action.notes.strip())
+    steps = [x.strip() for x in (action.steps or []) if x and x.strip()] if cfg.rules.breakdown else []
+    if steps:
+        lines.append("Steps:\n" + "\n".join(f"☐ {x}" for x in steps[:5]))
     if action.url:
         lines.append(action.url.strip())
     lines.append(tag)
@@ -155,11 +165,16 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
         p.review_reasons.append(f"confidence {ex.confidence:.2f} < {cfg.rules.review_threshold}")
     if len(ex.actions) > 8:
         p.review_reasons.append(f"{len(ex.actions)} actions in one message")
-    person = person_of(ev)
+    me = self_chat(cfg, ev)
+    person = "Me" if me else person_of(ev)
+    tag_person = None if me else person
 
     for seq, a in enumerate(ex.actions):
         title = (a.title or "").strip() or "(untitled)"
-        if ev.is_from_me and a.type in CREATE_TYPES and not cfg.watch.imessage.allow_self_notes:
+        if a.type == "track_promise" and not ev.is_from_me:
+            a = a.model_copy(update={"type": "create_reminder"})  # only my own messages make promises
+        if (ev.is_from_me and a.type in CREATE_TYPES and a.type not in ("track_promise", "waiting_on")
+                and not cfg.watch.imessage.allow_self_notes and not me):
             p.skipped.append(f"{title}: my own message can only change existing items")
             continue
         if ev.is_from_me and a.type in ITEM_TYPES and not cfg.rules.self_updates:
@@ -170,7 +185,8 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
             continue
 
         tag = item_tag(ev.event_id, seq)
-        if a.type == "create_reminder":
+        if a.type in ("create_reminder", "track_promise"):
+            kind = "promise" if a.type == "track_promise" else "todo"
             try:
                 due = _parse_date(a.due_date)
                 due_time = _parse_hhmm(a.due_time)
@@ -178,17 +194,42 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
                 p.review_reasons.append(f"{title}: invalid date/time ({e})")
                 due, due_time = None, None
             alert = _reminder_when(cfg, due, due_time, now, title, p.review_reasons)
-            shown = f"{title} · {person}" if cfg.rules.person_in_title else title
+            shown = f"{title} · {person}" if cfg.rules.person_in_title and not me else title
             payload = _organize(cfg, {
                 "title": shown, "list": cfg.rules.reminder_list,
                 "create_list_if_missing": cfg.rules.create_missing_lists,
                 "due": due.isoformat() if due else None,
                 "due_time": due_time.strftime("%H:%M") if (due and due_time) else None,
-                "alert": alert, "url": a.url, "notes": _notes(cfg, ev, a, tag, person), "tag": tag,
-            }, person, section=False)
-            p.commands.append(PlannedCommand(op="create_reminder", payload=payload, new_item={
-                "seq": seq, "kind": "reminder", "collection": None, "person": person, "title": shown,
-                "state": state_from_payload("create_reminder", payload), "tag": tag}))
+                "alert": alert, "url": a.url, "notes": _notes(cfg, ev, a, tag, person, kind=kind, me=me), "tag": tag,
+            }, tag_person, section=False)
+            p.commands.append(PlannedCommand(op="create_reminder", payload=payload, meta={"category": kind},
+                                             new_item={"seq": seq, "kind": "reminder", "collection": None,
+                                                       "person": person, "title": shown, "category": kind,
+                                                       "state": state_from_payload("create_reminder", payload),
+                                                       "tag": tag}))
+        elif a.type == "waiting_on":
+            about = (a.person or "").strip() or person
+            try:
+                due = _parse_date(a.due_date) or (ev.received_at.astimezone(cfg.tz).date()
+                                                  + timedelta(days=cfg.rules.waiting_default_days))
+                due_time = _parse_hhmm(a.due_time)
+            except ValueError as e:
+                p.review_reasons.append(f"{title}: invalid date/time ({e})")
+                continue
+            if due < now.date():
+                due = now.date()
+            alert = _reminder_when(cfg, due, due_time, now, title, p.review_reasons)
+            payload = _organize(cfg, {
+                "title": title, "list": cfg.rules.waiting_list, "create_list_if_missing": True,
+                "due": due.isoformat(), "due_time": due_time.strftime("%H:%M") if due_time else None,
+                "alert": alert, "url": a.url, "notes": _notes(cfg, ev, a, tag, about, kind="waiting", me=me),
+                "tag": tag,
+            }, None if about == "Me" else about, section=about != "Me")
+            p.commands.append(PlannedCommand(op="create_reminder", payload=payload, meta={"category": "waiting"},
+                                             new_item={"seq": seq, "kind": "reminder", "collection": None,
+                                                       "person": about, "title": title, "category": "waiting",
+                                                       "state": state_from_payload("create_reminder", payload),
+                                                       "tag": tag}))
         elif a.type == "save_to_collection":
             col = cfg.collection(a.collection)
             if not col:
@@ -198,8 +239,8 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
             payload = _organize(cfg, {
                 "title": title, "list": col.list.format(person=about), "create_list_if_missing": True,
                 "due": None, "due_time": None, "alert": None, "url": a.url,
-                "notes": _notes(cfg, ev, a, tag, person), "tag": tag,
-            }, about, section=col.group_by_person)
+                "notes": _notes(cfg, ev, a, tag, person, me=me), "tag": tag,
+            }, None if about == "Me" else about, section=col.group_by_person and about != "Me")
             p.commands.append(PlannedCommand(op="create_reminder", payload=payload, meta={"collection": col.key},
                                              new_item={"seq": seq, "kind": "reminder", "collection": col.key,
                                                        "person": about, "title": title,
@@ -214,13 +255,13 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
             except ValueError as e:
                 p.review_reasons.append(f"{title}: invalid start/end ({e})")
                 continue
-            shown = f"{title} · {person}" if cfg.rules.person_in_title else title
+            shown = f"{title} · {person}" if cfg.rules.person_in_title and not me else title
             payload = {
                 "title": shown,
                 "calendar": cfg.rules.calendars.default if not a.calendar else _calendar(cfg, a.calendar),
                 "start": start.isoformat(), "end": end.isoformat(), "all_day": all_day, "location": a.location,
                 "alert_minutes_before": None if all_day else cfg.rules.calendars.alert_minutes_before,
-                "url": a.url, "notes": _notes(cfg, ev, a, tag, person), "tag": tag,
+                "url": a.url, "notes": _notes(cfg, ev, a, tag, person, me=me), "tag": tag,
             }
             p.commands.append(PlannedCommand(op="create_event", payload=payload, new_item={
                 "seq": seq, "kind": "event", "collection": None, "person": person, "title": shown,

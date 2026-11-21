@@ -202,6 +202,41 @@ fallback, and caches it in `synced_config.json` so it keeps filtering while the 
 - A `404` (brain that predates this endpoint) makes the agent fall back to its local
   `allow_handles` until the endpoint appears.
 
+## GET /api/agent/tracked  (completion sync)
+
+The open items the brain wants status for (≤500), plus how often to ask again.
+
+```json
+{"items": [{"apple_item_id": "x-apple-...", "kind": "reminder", "tag": "[ha:imessage:1]"}],
+ "interval_s": 300}
+```
+
+The agent syncs ~30 s after startup, then every `interval_s` (clamped 60–3600, default 300), and
+also 5 s after it executes commands (debounced; a burst can delay it by at most 30 s). Runs never
+overlap. A `404` means the brain predates completion sync: the agent stops asking until it restarts.
+Network errors just wait for the next interval.
+
+## POST /api/agent/item-status
+
+Batches of ≤200:
+
+```json
+{"items": [{"apple_item_id": "x-apple-...", "kind": "reminder", "exists": true,
+            "completed": true, "completed_at": "2026-11-21T09:12:00-06:00",
+            "title": "Pick up eggs", "due": "2026-11-21", "due_time": null,
+            "start": null, "end": null}]}
+```
+
+- Lookup is by `apple_item_id`; if that fails the agent searches once by `tag`, and if found under a
+  different identifier reports it under the ORIGINAL `apple_item_id` with `"found_id": "<new id>"`.
+- `exists: false` is sent only when the agent could definitely have seen the item (store loaded,
+  full access for that kind, neither lookup found it). Missing permission or a store error → the
+  item is left out of the batch, never reported as missing.
+- `completed`/`completed_at`/`due`/`due_time` are for reminders (null for events);
+  `start`/`end` for events. Unset values are explicit `null`; `found_id` is omitted when unused.
+
+Response `200 {"ok": true, "updated": n}`.
+
 ## Dashboard / debugging (no agent token; protect with Tailscale)
 
 - `GET /` live feed, `GET /events/{event_id}` trace, `GET /health`, `GET /stats`

@@ -11,7 +11,7 @@ from . import models as m
 from .commands import Bus, CommandQueue
 from .config import Config
 from .extract import LLMClient, LLMError, LLMUnavailable, PromptTemplate, extract
-from .gate import allowlist_label, gate
+from .gate import allowlist_label, gate, sounds_like_commitment
 from .heartbeat import Alerter, Health
 from .items import Items, chat_key, create_payload
 from .models import DB
@@ -82,16 +82,18 @@ class Pipeline:
         self.db.trace(ev.event_id, "ingest", {"source": ev.source, "chars": len(ev.text),
                                               "context_lines": len(ev.recent_context)})
         self.db.trace(ev.event_id, "allowlist", {"allowed": True, "label": label})
-        reason = gate(self.cfg, ev)
-        if reason == "from_me" and self.cfg.rules.self_updates:
-            # My own reply can still move, finish or cancel something in this conversation.
-            if self.items.open_for(chat_key(ev), datetime.now(timezone.utc)):
+        reason = gate(self.cfg, ev) or self._duplicate(ev)
+        if reason == "from_me":
+            # My own reply can still move/finish/cancel something open here, or be a new promise.
+            has_open = self.cfg.rules.self_updates and bool(self.items.open_for(chat_key(ev), datetime.now(timezone.utc)))
+            promise = self.cfg.rules.track_promises and sounds_like_commitment(ev.text)
+            if has_open or promise:
                 reason = gate(self.cfg, ev.model_copy(update={"is_from_me": False}))
         self.db.trace(ev.event_id, "gate", {"decision": "skip" if reason else "pass", "reason": reason,
                                             "from_me": ev.is_from_me})
         if reason:
             self._set(ev.event_id, status=m.SKIPPED, reason=reason)
-            return {"status": "accepted", "event_id": ev.event_id, "result": m.SKIPPED}
+            return {"status": "accepted", "event_id": ev.event_id, "result": m.SKIPPED, "reason": reason}
         self.bus.publish({"event_id": ev.event_id, "status": m.RECEIVED})
         if sync:
             await self.process(ev.event_id)
@@ -99,6 +101,20 @@ class Pipeline:
             return {"status": "accepted", "event_id": ev.event_id, "result": row["status"], "reason": row["reason"]}
         self.submit(ev.event_id)
         return {"status": "accepted", "event_id": ev.event_id}
+
+    def _duplicate(self, ev: Event) -> str | None:
+        """Texting yourself stores the message twice (sent + received copy): skip the echo."""
+        text = (ev.text or "").strip()
+        if not text:
+            return None
+        rows = self.db.all(
+            """SELECT event_id, received_at, chat_id, sender_handle FROM events
+               WHERE text = ? AND event_id != ? ORDER BY id DESC LIMIT 5""", (ev.text, ev.event_id))
+        for r in rows:
+            same_chat = (r["chat_id"] and r["chat_id"] == ev.chat_id) or (r["sender_handle"] == ev.sender_handle)
+            if same_chat and abs((datetime.fromisoformat(r["received_at"]) - ev.received_at).total_seconds()) <= 120:
+                return "duplicate"
+        return None
 
     # ---- 4-6: extract, plan, queue -------------------------------------------------
     async def process(self, event_id: str) -> None:
@@ -174,7 +190,8 @@ class Pipeline:
                 item_id = self.items.create(event_id=ev.event_id, seq=ni["seq"], kind=ni["kind"],
                                             collection=ni["collection"], chat=key, person=ni["person"],
                                             title=ni["title"], state=ni["state"], tag=ni["tag"],
-                                            status="proposed" if p.needs_review else "planned")
+                                            status="proposed" if p.needs_review else "planned",
+                                            category=ni.get("category"))
             elif not p.needs_review and self._edit_proposed(ev, c):
                 direct.append(c.meta.get("title") if c.meta else c.item_id)
                 continue

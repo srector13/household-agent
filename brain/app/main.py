@@ -22,6 +22,7 @@ from . import __version__, views
 from . import models as m
 from .backup import backup_if_due
 from .commands import Bus, CommandQueue
+from .daily import Daily
 from .config import Config, load_raw
 from .extract import LLMClient, LLMError, VLLMClient, extract
 from .gate import gate, normalize_handle
@@ -31,7 +32,7 @@ from .items import chat_key
 from .models import DB
 from .pipeline import ActionError, Pipeline
 from .planner import plan
-from .schemas import CommandResult, Event, Heartbeat
+from .schemas import CommandResult, Event, Heartbeat, ItemStatusReport
 from .settings import SettingsError, SettingsStore
 
 log = logging.getLogger("brain")
@@ -64,6 +65,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
     llm = llm or VLLMClient(lambda: cfg.llm)
     pipeline = Pipeline(cfg, db, llm, queue, bus, alerter, health)
     health.on_llm_recovered = lambda: asyncio.create_task(pipeline.retry_received())
+    daily = Daily(cfg, db, pipeline.items, queue, llm, alerter, bus)
     state: dict[str, Any] = {"mail": None}
 
     def start_mail() -> None:
@@ -101,6 +103,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
                 asyncio.create_task(run_every(30, pipeline.retry_received, name="retry")),
                 asyncio.create_task(run_every(60, ping_llm, name="llm-ping")),
                 asyncio.create_task(run_every(600, lambda: backup_if_due(cfg, db), name="backup")),
+                asyncio.create_task(run_every(60, daily.tick, name="daily")),
             ]
             start_mail()
         yield
@@ -111,7 +114,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
 
     app = FastAPI(title="Household Agent brain", version=__version__, lifespan=lifespan)
     app.state.cfg, app.state.db, app.state.pipeline, app.state.queue = cfg, db, pipeline, queue
-    app.state.health, app.state.settings = health, settings
+    app.state.health, app.state.settings, app.state.daily = health, settings, daily
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
     env = templates.env
@@ -211,6 +214,17 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         bus.publish({"type": "heartbeat"})
         return {"ok": True, "settings_version": settings.version}
 
+    @app.get("/api/agent/tracked", dependencies=[Depends(agent_auth)])
+    async def agent_tracked():
+        return {"items": pipeline.items.tracked(), "interval_s": 300}
+
+    @app.post("/api/agent/item-status", dependencies=[Depends(agent_auth)])
+    async def agent_item_status(report: ItemStatusReport):
+        n = pipeline.items.apply_status(report.items)
+        if n:
+            bus.publish({"type": "items"})
+        return {"ok": True, "updated": n}
+
     @app.get("/api/agent/config", dependencies=[Depends(agent_auth)])
     async def agent_config():
         return settings.agent_config()
@@ -299,6 +313,37 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         path = await backup_if_due(cfg, db, force=True)
         return {"ok": bool(path), "path": path}
 
+    # ---- today / daily ------------------------------------------------------------------------
+    @app.post("/api/today/{what}", dependencies=[Depends(dash_auth)])
+    async def today_action(what: str, body: dict = Body(default={})):
+        if what == "repick":
+            plan = await daily.morning(force=True)
+            return {"ok": True, "picks": plan["picks"]}
+        if what == "morning":
+            day = daily.today()
+            plan = daily.plan(day)
+            if not plan.get("picks"):
+                plan = await daily.morning()
+            elif cfg.daily.discord:
+                await alerter.send("daily", daily.morning_text(day, plan))
+            return {"ok": True}
+        if what == "evening":
+            await daily.evening(force=True)
+            return {"ok": True}
+        if what == "tomorrow":
+            ids = [str(i) for i in body.get("item_ids", [])]
+            from datetime import timedelta as _td
+            daily.preselect(daily.today() + _td(days=1), ids)
+            return {"ok": True}
+        raise HTTPException(404)
+
+    @app.post("/api/items/{item_id}/breakdown", dependencies=[Depends(dash_auth)])
+    async def item_breakdown(item_id: str):
+        try:
+            return {"ok": True, **(await daily.breakdown(item_id))}
+        except (ValueError, LLMError) as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=422)
+
     # ---- pages -------------------------------------------------------------------------------
     def page(request: Request, name: str, nav: str, **ctx: Any) -> HTMLResponse:
         review = db.one("SELECT COUNT(*) n FROM events WHERE status=?", (m.NEEDS_REVIEW,))["n"]
@@ -309,9 +354,27 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
     @app.get("/", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
     async def overview_page(request: Request):
         ov = views.overview(db, cfg, health.snapshot(queue.depth()))
-        return page(request, "overview.html", "overview", ov=ov, recent=views.search_events(
+        tplan = daily.plan(daily.today())
+        today_picks = [{**p, "status": (pipeline.items.get(p["item_id"]) or {}).get("status", "gone")}
+                       for p in tplan.get("picks", [])]
+        return page(request, "overview.html", "overview", ov=ov, today_picks=today_picks, recent=views.search_events(
             db, q=None, status=None, source=None, limit=8), upcoming=views.upcoming(db, cfg),
             prompt_version=pipeline.prompt.version)
+
+    @app.get("/today", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def today_page(request: Request):
+        from datetime import timedelta as _td
+        day = daily.today()
+        plan = daily.plan(day)
+        picks = []
+        for p in plan.get("picks", []):
+            it = pipeline.items.get(p["item_id"])
+            picks.append({**p, "status": it["status"] if it else "gone", "item": it})
+        tomorrow = daily.plan(day + _td(days=1))
+        chosen = tomorrow.get("preselected") or [s["item_id"] for s in tomorrow.get("suggested", [])]
+        return page(request, "today.html", "today", day=day, plan=plan, picks=picks, done=daily.done_on(day),
+                    events=daily.events_on(day), candidates=daily.candidates(datetime.now(cfg.tz), limit=15),
+                    tomorrow_chosen=chosen, tomorrow_locked=bool(tomorrow.get("preselected")))
 
     @app.get("/activity", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
     async def activity_page(request: Request, status: str | None = None, q: str | None = None,
@@ -334,7 +397,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         counts = {
             "todos": len(reg.listing(statuses=("proposed", "planned", "active"), collection=None)),
             "collections": len(reg.listing(statuses=("planned", "active"), collection=True)),
-            "history": len(reg.listing(statuses=("completed", "cancelled", "undone", "rejected", "failed"))),
+            "history": len(reg.listing(statuses=("completed", "cancelled", "undone", "rejected", "failed", "deleted"))),
         }
         groups: dict[str, dict[str, list]] = {}
         if tab == "collections":
@@ -343,7 +406,8 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
                 groups.setdefault(it["collection"], {}).setdefault(it["person"] or "Unassigned", []).append(it)
             rows = []
         elif tab == "history":
-            rows = views.item_cards(db, reg.listing(statuses=("completed", "cancelled", "undone", "rejected", "failed"),
+            rows = views.item_cards(db, reg.listing(statuses=("completed", "cancelled", "undone", "rejected", "failed",
+                                                              "deleted"),
                                                     limit=200))
         else:
             tab = "todos"

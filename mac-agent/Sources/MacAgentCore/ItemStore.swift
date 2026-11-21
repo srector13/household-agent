@@ -19,6 +19,16 @@ public protocol ItemStore: Sendable {
     /// EKCalendar.calendarIdentifier of the list holding this reminder (needed for sections).
     func listIdentifier(ofReminder id: String) async throws -> String?
     func permissionFlags() async -> (reminders: Bool, calendar: Bool)
+    /// Current state of an item, for completion sync. `.notFound` only when the store is loaded and
+    /// has full access for `kind`; anything uncertain is `.unknown`.
+    func itemStatus(id: String, kind: ItemKind) async -> ItemLookup
+    /// Called before a status sync so changes made on other devices (iCloud) are visible.
+    func refreshForStatusSync() async
+}
+
+extension ItemStore {
+    public func itemStatus(id: String, kind: ItemKind) async -> ItemLookup { .unknown("not supported") }
+    public func refreshForStatusSync() async {}
 }
 
 /// Applies brain commands to an ItemStore, enforcing tag-based idempotency.

@@ -103,17 +103,41 @@ actor FakeItemStore: ItemStore {
         var allDay: Bool = false
         var location: String?
         var completed = false
+        var completedAt: String?
         var list: String?
     }
 
     var items: [String: Item] = [:]
     var createCount = 0
     var updateCount = 0
+    var refreshCount = 0
+    // Completion-sync knobs
+    var remindersAccess = true
+    var calendarAccess = true
+    var findFails = false
+    var unknownIds: Set<String> = []
     private var next = 0
 
     func findItem(taggedWith tag: String, kind: ItemKind, around date: Date?) async throws -> String? {
-        items.first { $0.value.kind == kind && ($0.value.notes ?? "").contains(tag) }?.key
+        if findFails { throw ItemStoreError("fetch failed") }
+        return items.first { $0.value.kind == kind && ($0.value.notes ?? "").contains(tag) }?.key
     }
+
+    func set(_ id: String, _ item: Item) { items[id] = item }
+    func setAccess(reminders: Bool, calendar: Bool) { remindersAccess = reminders; calendarAccess = calendar }
+    func setFindFails(_ v: Bool) { findFails = v }
+    func markUnknown(_ id: String) { unknownIds.insert(id) }
+
+    func itemStatus(id: String, kind: ItemKind) async -> ItemLookup {
+        if unknownIds.contains(id) { return .unknown("simulated store error") }
+        guard kind == .reminder ? remindersAccess : calendarAccess else { return .unknown("no access") }
+        guard let it = items[id] else { return .notFound }
+        guard it.kind == kind else { return .unknown("kind mismatch") }
+        return .found(ItemSnapshot(completed: it.completed, completedAt: it.completedAt, title: it.title,
+                                   due: it.due, dueTime: it.dueTime, start: it.start, end: it.end))
+    }
+
+    func refreshForStatusSync() async { refreshCount += 1 }
 
     func createReminder(_ p: ReminderPayload) async throws -> String {
         next += 1
@@ -166,7 +190,7 @@ actor FakeItemStore: ItemStore {
         items[id].map { "list:" + ($0.list ?? "default") }
     }
 
-    func permissionFlags() async -> (reminders: Bool, calendar: Bool) { (true, true) }
+    func permissionFlags() async -> (reminders: Bool, calendar: Bool) { (remindersAccess, calendarAccess) }
 }
 
 /// Records what the executor asked to organize; can be unavailable or fail on apply.

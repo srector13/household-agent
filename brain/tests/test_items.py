@@ -32,7 +32,7 @@ def run_mac(client, apple_prefix="A"):
 
 def items(client):
     return client.app_state.pipeline.items.listing(statuses=("proposed", "planned", "active", "completed",
-                                                            "cancelled", "undone", "rejected"))
+                                                            "cancelled", "undone", "rejected", "deleted"))
 
 
 def test_never_mind_cancels_the_earlier_reminder(client, llm):
@@ -87,8 +87,11 @@ def test_my_reply_adds_the_date(client, llm):
 
 
 def test_my_messages_ignored_without_open_items(client, llm):
-    res = post(client, event_id="imessage:9", text="I'll do it tomorrow", is_from_me=True)
+    res = post(client, event_id="imessage:9", text="haha that's so true", is_from_me=True)
     assert res["result"] == "skipped" and llm.calls == []
+    # …unless it sounds like a commitment (could be a promise)
+    post(client, event_id="imessage:10", text="I'll send you the photos tonight", is_from_me=True)
+    assert len(llm.calls) == 1
 
 
 def test_my_message_cannot_create(client, llm):

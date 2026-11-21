@@ -20,6 +20,8 @@ class FakeLLM:
         self.responder = lambda prompt: {"actionable": False, "actions": [], "confidence": 0.9,
                                          "reasoning_brief": "chit-chat"}
         self.calls: list[list[dict]] = []
+        self.json_calls: list = []
+        self.json_responder = lambda name, messages: RuntimeError("no json responder set")
 
     async def complete(self, messages):
         self.calls.append(messages)
@@ -30,6 +32,13 @@ class FakeLLM:
 
     async def ping(self):
         return 12.0
+
+    async def complete_json(self, messages, schema, name):
+        self.json_calls.append((name, messages))
+        out = self.json_responder(name, messages)
+        if isinstance(out, Exception):
+            raise out
+        return out if isinstance(out, str) else json.dumps(out)
 
 
 class FakeAlerter:

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, List, Literal
 
 from pydantic import BaseModel, Field
 
@@ -20,9 +20,9 @@ class Event(BaseModel):
     subject: str | None = None  # mail only
 
 
-ActionType = Literal["create_reminder", "create_event", "save_to_collection",
+ActionType = Literal["create_reminder", "create_event", "save_to_collection", "track_promise", "waiting_on",
                      "update_item", "complete_item", "cancel_item"]
-CREATE_TYPES = ("create_reminder", "create_event", "save_to_collection")
+CREATE_TYPES = ("create_reminder", "create_event", "save_to_collection", "track_promise", "waiting_on")
 ITEM_TYPES = ("update_item", "complete_item", "cancel_item")
 
 
@@ -43,6 +43,8 @@ class Action(BaseModel):
     url: str | None = None
     notes: str | None = None
     summary: str | None = None      # one-line context summary, goes in the item's notes
+    first_step: str | None = None   # tiny concrete way to start a big/vague task
+    steps: List[str] = Field(default_factory=lambda: [])  # `list` is shadowed by the field above
     source_quote: str = ""
 
 
@@ -58,7 +60,7 @@ def _nullable(t: str, **extra: Any) -> dict[str, Any]:
 
 
 ACTION_FIELDS = ["type", "ref", "collection", "person", "title", "due_date", "due_time", "start", "end",
-                 "all_day", "location", "url", "notes", "summary", "source_quote"]
+                 "all_day", "location", "url", "notes", "summary", "first_step", "steps", "source_quote"]
 
 # Flat schema, every field required (nullable where optional) — best for constrained decoding.
 EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
@@ -89,6 +91,8 @@ EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
                     "url": _nullable("string"),
                     "notes": _nullable("string"),
                     "summary": _nullable("string"),
+                    "first_step": _nullable("string", description="tiny concrete first step for big/vague tasks"),
+                    "steps": {"type": "array", "maxItems": 5, "items": {"type": "string"}},
                     "source_quote": {"type": "string"},
                 },
             },
@@ -110,6 +114,25 @@ class Heartbeat(BaseModel):
     reminderkit_ok: bool | None = None  # sections + tags available on the Mac
     allowlist_version: int | None = None
     allowlist_size: int | None = None
+
+
+class ItemStatus(BaseModel):
+    """What the Mac sees for a tracked item (completion sync)."""
+    apple_item_id: str
+    kind: Literal["reminder", "event"] = "reminder"
+    exists: bool = True
+    completed: bool | None = None
+    completed_at: datetime | None = None
+    title: str | None = None
+    due: str | None = None
+    due_time: str | None = None
+    start: str | None = None
+    end: str | None = None
+    found_id: str | None = None
+
+
+class ItemStatusReport(BaseModel):
+    items: list[ItemStatus] = Field(default_factory=list, max_length=500)
 
 
 class CommandResult(BaseModel):

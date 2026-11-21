@@ -56,10 +56,14 @@ public actor EventKitService: ItemStore {
             guard Self.hasRemindersAccess() else { throw ItemStoreError("no Reminders access") }
             let store = self.store
             let predicate = store.predicateForReminders(in: nil)
-            return await withCheckedContinuation { (c: CheckedContinuation<String?, Never>) in
+            // A nil array means the fetch failed — throw rather than claim "not found".
+            return try await withCheckedThrowingContinuation { (c: CheckedContinuation<String?, Error>) in
                 _ = store.fetchReminders(matching: predicate) { reminders in
-                    let id = reminders?.first { ($0.notes ?? "").contains(tag) }?.calendarItemIdentifier
-                    c.resume(returning: id)
+                    guard let reminders else {
+                        c.resume(throwing: ItemStoreError("fetching reminders failed"))
+                        return
+                    }
+                    c.resume(returning: reminders.first { ($0.notes ?? "").contains(tag) }?.calendarItemIdentifier)
                 }
             }
         case .event:
@@ -69,6 +73,39 @@ public actor EventKitService: ItemStore {
             let predicate = store.predicateForEvents(withStart: center.addingTimeInterval(-year),
                                                      end: center.addingTimeInterval(year), calendars: nil)
             return store.events(matching: predicate).first { ($0.notes ?? "").contains(tag) }?.calendarItemIdentifier
+        }
+    }
+
+    // MARK: Status (completion sync)
+
+    public func refreshForStatusSync() async {
+        store.refreshSourcesIfNecessary()
+    }
+
+    public func itemStatus(id: String, kind: ItemKind) async -> ItemLookup {
+        let permitted = kind == .reminder ? Self.hasRemindersAccess() : Self.hasCalendarAccess()
+        guard permitted else { return .unknown("no \(kind == .reminder ? "Reminders" : "Calendar") access") }
+        guard let item = store.calendarItem(withIdentifier: id) else {
+            // calendarItem(withIdentifier:) is also nil when the store hasn't loaded its sources yet.
+            let loaded = !store.sources.isEmpty
+                && !store.calendars(for: kind == .reminder ? .reminder : .event).isEmpty
+            return loaded ? .notFound : .unknown("event store not loaded")
+        }
+        switch kind {
+        case .reminder:
+            guard let r = item as? EKReminder else { return .unknown("not a reminder") }
+            var snap = ItemSnapshot(completed: r.isCompleted, title: r.title)
+            if let d = r.completionDate { snap.completedAt = AppleDate.iso8601(d, timeZone: timeZone) }
+            if let c = r.dueDateComponents, let y = c.year, let m = c.month, let day = c.day {
+                snap.due = String(format: "%04d-%02d-%02d", y, m, day)
+                if let h = c.hour { snap.dueTime = String(format: "%02d:%02d", h, c.minute ?? 0) }
+            }
+            return .found(snap)
+        case .event:
+            guard let e = item as? EKEvent else { return .unknown("not an event") }
+            return .found(ItemSnapshot(title: e.title,
+                                       start: e.startDate.map { AppleDate.iso8601($0, timeZone: timeZone) },
+                                       end: e.endDate.map { AppleDate.iso8601($0, timeZone: timeZone) }))
         }
     }
 

@@ -50,13 +50,16 @@ class Items:
         return self._decode(self.db.one("SELECT * FROM items WHERE item_id=?", (item_id,))) if item_id else None
 
     def create(self, *, event_id: str, seq: int, kind: str, collection: str | None, chat: str, person: str | None,
-               title: str, state: dict, tag: str, status: str) -> str:
+               title: str, state: dict, tag: str, status: str, category: str | None = None) -> str:
         iid = new_item_id()
         now = utcnow()
+        category = category or ("collection" if collection else "event" if kind == "event" else "todo")
         self.db.execute(
             """INSERT INTO items (item_id, origin_event_id, seq, kind, collection, chat_key, person, title, state,
-                                  tag, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (iid, event_id, seq, kind, collection, chat, person, title, json.dumps(state), tag, status, now, now),
+                                  tag, status, created_at, updated_at, category)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (iid, event_id, seq, kind, collection, chat, person, title, json.dumps(state), tag, status, now, now,
+             category),
         )
         self.log(iid, event_id, "proposed" if status == "proposed" else "planned", {"title": title})
         return iid
@@ -105,6 +108,74 @@ class Items:
                            (*params, limit))
         return [self._decode(r) for r in rows]
 
+    def tracked(self, limit: int = 500) -> list[dict[str, Any]]:
+        """Items the Mac should report status for (completion sync)."""
+        return self.db.all(
+            """SELECT apple_item_id, kind, tag FROM items WHERE status IN ('active','completed')
+               AND apple_item_id IS NOT NULL ORDER BY updated_at DESC LIMIT ?""", (limit,))
+
+    def apply_status(self, report: list) -> int:
+        """Completion sync from the Mac. Returns how many items changed.
+
+        Safety: an item is only marked deleted after two consecutive "missing" reports, and a report
+        where most items are missing at once is ignored (store not loaded, permissions, iCloud reset…).
+        """
+        missing = [r for r in report if not r.exists]
+        if len(report) >= 6 and len(missing) > len(report) / 2:
+            self.db.insert_alert("sync", f"Ignored a completion sync where {len(missing)}/{len(report)} items were "
+                                         "missing — looks like a Reminders glitch, not real deletions.", False)
+            return 0
+        changed = 0
+        for r in report:
+            row = self.db.one("SELECT * FROM items WHERE apple_item_id=?", (r.apple_item_id,))
+            item = self._decode(row)
+            if not item:
+                continue
+            fields: dict[str, Any] = {}
+            if r.found_id and r.found_id != r.apple_item_id:
+                fields["apple_item_id"] = r.found_id
+            if not r.exists:
+                if item["missing"] >= 1 and item["status"] in ("active", "completed"):
+                    fields.update(status="deleted", missing=item["missing"] + 1)
+                    self.log(item["item_id"], None, "deleted", {"via": "Reminders"})
+                else:
+                    fields["missing"] = item["missing"] + 1
+                self.update(item["item_id"], **fields)
+                changed += "status" in fields
+                continue
+            if item["missing"]:
+                fields["missing"] = 0
+            st = dict(item["state"])
+            edits = {}
+            if r.title and r.title != item["title"]:
+                fields["title"] = r.title
+                edits["title"] = r.title
+            if item["kind"] == "reminder":
+                for k in ("due", "due_time"):
+                    if getattr(r, k) != st.get(k) and (getattr(r, k) or st.get(k)):
+                        st[k] = getattr(r, k)
+                        edits[k] = getattr(r, k)
+                if r.completed and item["status"] == "active":
+                    fields["status"] = "completed"
+                    fields["completed_at"] = (r.completed_at or datetime.now(timezone.utc)).isoformat()
+                    self.log(item["item_id"], None, "completed", {"via": "Reminders"})
+                elif r.completed is False and item["status"] == "completed":
+                    fields["status"] = "active"
+                    self.log(item["item_id"], None, "reopened", {"via": "Reminders"})
+            else:
+                for k in ("start", "end"):
+                    v = getattr(r, k)
+                    if v and st.get(k) and datetime.fromisoformat(v) != datetime.fromisoformat(st[k]):
+                        st[k] = v
+                        edits[k] = v
+            if edits:
+                fields["state"] = st
+                self.log(item["item_id"], None, "edited", {"via": "Reminders", "changes": edits})
+            if fields:
+                self.update(item["item_id"], **fields)
+                changed += 1
+        return changed
+
     # ---- command results ------------------------------------------------------------------------
     def on_result(self, cmd: dict[str, Any], res: CommandResult) -> None:
         item = self.get(cmd.get("item_id"))
@@ -134,7 +205,13 @@ class Items:
                 fields["title"] = changes["title"]
             if "completed" in changes:
                 fields["status"] = "completed" if changes["completed"] else "active"
+                if changes["completed"]:
+                    fields["completed_at"] = datetime.now(timezone.utc).isoformat()
             action = {"complete": "completed", "update": "updated"}.get(purpose, "restored")
+            if meta.get("daily"):
+                action = "moved to Today" if meta.get("why") == "today's pick" else "moved back off Today"
+            elif meta.get("why") == "break it down":
+                action = "steps added"
             self.log(item["item_id"], cmd["event_id"], action, {"changes": changes})
         elif purpose == "undo" and cmd["op"] == "delete_item":
             fields["status"] = "undone"

@@ -30,11 +30,13 @@ EDITABLE: dict[str, Any] = {
     },
     "rules": {"default_alert_time": True, "review_threshold": True, "reminder_list": True,
               "create_missing_lists": True, "self_updates": True, "person_in_title": True, "open_item_days": True,
-              "person_tags": True,
+              "person_tags": True, "track_promises": True, "waiting_list": True, "waiting_default_days": True, "breakdown": True,
               "calendars": {"default": True, "default_duration_min": True, "alert_minutes_before": True}},
     "alerts": {"discord_webhook_url": True, "heartbeat_timeout_s": True},
     "dashboard": {"public_url": True},
     "collections": True,
+    "daily": {"enabled": True, "morning_time": True, "evening_time": True, "count": True, "today_view": True,
+              "discord": True},
 }
 SECRETS = {("llm", "api_key"), ("watch", "mail", "password"), ("alerts", "discord_webhook_url")}
 

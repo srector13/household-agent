@@ -21,7 +21,7 @@ mac-agent (Swift, Mac)  ──HTTPS/Tailscale──▶  brain (FastAPI, Docker, 
 |---|---|
 | `brain/app/` | FastAPI app: `main.py` routes, `pipeline.py`, `gate.py`, `extract.py`, `planner.py`, `commands.py` (queue + SSE bus), `heartbeat.py` (watchdog + Discord), `mail.py` (IMAP IDLE), `backup.py`, `eval.py` |
 | `brain/app/prompts/extract.md` | The extraction prompt, versioned in its front matter (`extract-v1`), recorded on every event |
-| `brain/tests/` | Unit tests (fake LLM) + `fixtures/messages.jsonl`, the 55-case golden set |
+| `brain/tests/` | Unit tests (fake LLM) + `fixtures/messages.jsonl`, the 64-case golden set |
 | `mac-agent/` | Swift package: chat.db watcher, typedstream decoder, EventKit, outbox, launchd plist, install scripts. See [mac-agent/README.md](mac-agent/README.md) |
 | `config.example.yaml` | Copy to `config.yaml` (gitignored) |
 
@@ -75,7 +75,7 @@ troubleshooting. For lid-closed, always-on operation (phase 6), run
 ## Development
 
 ```sh
-make test          # brain: 89 tests, no network (fake LLM)
+make test          # brain: 108 tests, no network (fake LLM)
 make run           # brain locally on :8080 with ./config.yaml
 make agent-test    # mac-agent: swift test (also runs on Linux, minus EventKit)
 ```
@@ -135,6 +135,33 @@ Mac, run `mac-agent --probe-reminderkit --write`.
 
 You can add, rename or turn off collections in Settings. The description you write is what tells
 the model what belongs there.
+
+## Second brain
+
+Built for an ADHD brain: capture with no friction, keep promises from slipping, and only ever
+put a few things in front of you.
+
+- **Notes to self:** add your own number in Settings → People and mark it **This is me**.
+  Anything you text yourself, including a rambling brain dump, gets split into to-dos, ideas and
+  saved notes, labelled "📝 Note to self". The duplicate copy Messages stores when you text
+  yourself is skipped.
+- **Promises you make:** "I'll send you the photos tonight" in a chat becomes a to-do marked
+  "🤝 You promised Sarah". "Here you go!" later checks it off. Your messages are only read by the
+  model when they sound like a commitment or the chat has open items.
+- **Waiting on others:** "I'll ask my boss and let you know Monday" goes to **⏳ Waiting on**, in
+  that person's column, with a follow-up on Monday. If no date was given, the follow-up is 3 days
+  out. "Here's the quote" closes it.
+- **A first step for big tasks:** "Do our taxes" gets "👉 Start: Find last year's return" as the
+  second line of its notes, which shows in the Reminders preview, plus a few steps. Any to-do can
+  get one later with **Break it down**.
+- **Today's three:** each morning (07:30 by default) the model picks three things: late or due,
+  promises first, plus a quick win. Each comes with a first step. They're moved into Reminders'
+  **Today** view and posted to Discord. Everything else stays out of sight.
+- **Evening recap** (20:30): what got done, unfinished picks moved back to their old dates (no
+  overdue pile), and tomorrow's suggestions. You can pick tomorrow's three on the **Today** page.
+- **Completion sync:** the Mac agent reports every few minutes which reminders you completed,
+  edited or deleted on your phone. An item is only marked deleted after two reports in a row,
+  and a report where most items vanish at once is ignored.
 
 ## How it behaves
 

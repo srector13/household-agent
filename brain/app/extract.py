@@ -46,13 +46,17 @@ def describe_item(cfg: Config, it: dict) -> str:
     if it.get("collection"):
         col = next((c for c in cfg.collections if c.key == it["collection"]), None)
         what = f"Saved to {col.label if col else it['collection']} ({it.get('person') or '?'})"
+    elif it.get("category") == "promise":
+        what = f"My promise to {it.get('person') or '?'}"
+    elif it.get("category") == "waiting":
+        what = f"Waiting on {it.get('person') or '?'}"
     else:
         what = "To-do" if it["kind"] == "reminder" else "Event"
     bits = [f"{what}: “{it['title']}”"]
     if it["kind"] == "reminder" and st.get("due"):
         d = datetime.fromisoformat(st["due"]).strftime("%a %b %-d")
         bits.append(f"due {d}" + (f" {st['due_time']}" if st.get("due_time") else ""))
-    elif it["kind"] == "reminder" and not it.get("collection"):
+    elif it["kind"] == "reminder" and not it.get("collection") and it.get("category") != "waiting":
         bits.append("no due date")
     if it["kind"] == "event" and st.get("start"):
         s = datetime.fromisoformat(st["start"]).astimezone(cfg.tz)
@@ -67,6 +71,8 @@ def describe_item(cfg: Config, it: dict) -> str:
 def build_messages(cfg: Config, tpl: PromptTemplate, ev: Event, now: datetime,
                    open_items: list[dict] | None = None) -> list[dict[str, str]]:
     now = now.astimezone(cfg.tz)
+    from .gate import self_chat
+    is_self = self_chat(cfg, ev)
     days = []
     for i in range(0, 15):
         d = now.date() + timedelta(days=i)
@@ -85,15 +91,19 @@ def build_messages(cfg: Config, tpl: PromptTemplate, ev: Event, now: datetime,
                       or "(none)",
         "collections": "\n".join(f"  - `{c.key}`: {c.description}" for c in cfg.collections if c.enabled)
                        or "  (none configured — do not use save_to_collection)",
-        "direction": (f"New message from ME (the user) to {ev.sender_label or ev.sender_handle}" if ev.is_from_me
+        "direction": ("New note I wrote to MYSELF (notes-to-self capture)" if is_self
+                      else f"New message from ME (the user) to {ev.sender_label or ev.sender_handle}" if ev.is_from_me
                       else f"New message from {ev.sender_label or ev.sender_handle or 'unknown'}"),
         "direction_rules": (
-            "- This new message was written by ME (the user), not by the other person. Treat it as me "
-            "committing to, rescheduling, finishing, or dropping something: \"I'll do it tomorrow\" → "
-            "update_item with tomorrow's date; \"done\"/\"got it\" after doing it → complete_item. "
-            + ("I may also note new things for myself." if cfg.watch.imessage.allow_self_notes
-               else "Do NOT create new items from my own message — only update/complete/cancel open items.")
-        ) if ev.is_from_me else "",
+            "- This is my own notes-to-self thread: everything in it is something I want captured for me."
+            if is_self else (
+            "- This new message was written by ME (the user), not by the other person. \"I'll do it tomorrow\" "
+            "about an open item → update_item with tomorrow's date; \"done\"/\"got it\" → complete_item; a NEW "
+            "commitment to them (\"I'll send it tonight\") → track_promise; asking them to get back to me → "
+            "waiting_on. "
+            + ("I may also note other new things for myself." if cfg.watch.imessage.allow_self_notes
+               else "Otherwise do NOT create new to-dos from my own message.")
+        )) if ev.is_from_me else "",
         "received": received.strftime("%a %Y-%m-%d %H:%M"),
         "subject": f"Subject: {ev.subject}\n" if ev.subject else "",
         "message": ev.text.strip(),
@@ -167,6 +177,18 @@ class VLLMClient:
             data = r.json()
             return data["choices"][0]["message"].get("content") or ""
         raise LLMUnavailable(f"vLLM unreachable after retry: {last!r}")
+
+    async def complete_json(self, messages: list[dict[str, str]], schema: dict[str, Any], name: str) -> str:
+        """One structured-output call with any JSON schema (daily picks, task breakdowns…)."""
+        cfg = self.cfg
+        body = {**self.request_body(messages),
+                "response_format": {"type": "json_schema", "json_schema": {"name": name, "schema": schema,
+                                                                           "strict": True}}}
+        r = await self.http.post(cfg.base_url.rstrip("/") + "/chat/completions", json=body,
+                                 timeout=cfg.timeout_s, headers=self._headers(cfg.api_key))
+        if r.status_code >= 400:
+            raise LLMError(f"vLLM HTTP {r.status_code}: {r.text[:300]}")
+        return THINK_RE.sub("", r.json()["choices"][0]["message"].get("content") or "").strip()
 
     async def list_models(self, base_url: str | None = None, api_key: str | None = None) -> tuple[list[str], float]:
         cfg = self.cfg

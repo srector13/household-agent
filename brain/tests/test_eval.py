@@ -21,6 +21,9 @@ def perfect_extraction(case):
         for k in ("ref", "collection", "person", "url", "due_date", "due_time", "start", "end", "all_day"):
             if k in a:
                 base[k] = a[k]
+        if a.get("has_first_step"):
+            base["first_step"] = "Open the folder"
+        base["steps"] = []
         actions.append(base)
     return {"actionable": True, "actions": actions, "confidence": 0.95, "reasoning_brief": "n/a"}
 
@@ -31,7 +34,7 @@ def test_golden_set_shape():
     assert len({c["id"] for c in cases}) == len(cases)
     kinds = {a["type"] for c in cases for a in c["expect"].get("actions", [])}
     assert kinds == {"create_reminder", "create_event", "save_to_collection", "update_item", "complete_item",
-                     "cancel_item"}
+                     "cancel_item", "track_promise", "waiting_on"}
     assert sum(not c["expect"]["actionable"] for c in cases) >= 8
 
 

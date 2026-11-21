@@ -26,6 +26,7 @@ class AllowEntry(BaseModel):
     chat_id: str | None = None
     label: str | None = None
     enabled: bool = True
+    is_me: bool = False  # my own number: a notes-to-self capture inbox
 
     @model_validator(mode="after")
     def _check(self):
@@ -36,6 +37,8 @@ class AllowEntry(BaseModel):
             raise ValueError("each entry needs a phone number, email or chat id")
         if self.handle and "@" not in self.handle and len(re.sub(r"\D", "", self.handle)) < 7:
             raise ValueError(f"{self.handle!r} doesn't look like a phone number or email")
+        if (self.label or "").strip().lower() in ("me", "myself", "self", "note to self", "notes to self"):
+            self.is_me = True
         return self
 
 
@@ -75,6 +78,10 @@ class RulesConfig(BaseModel):
     person_in_title: bool = False    # "Pick up eggs · Sarah" (the name is always in the notes)
     person_tags: bool = True         # tag reminders with the person (#Sarah) — needs the Mac's ReminderKit support
     open_item_days: int = Field(21, ge=1, le=365)  # how far back items stay editable by context
+    track_promises: bool = True      # notice "I'll send it tonight" in my own messages
+    waiting_list: str = Field("⏳ Waiting on", min_length=1)  # things other people owe me (a column per person)
+    waiting_default_days: int = Field(3, ge=1, le=60)         # follow up after this long if no date was given
+    breakdown: bool = True           # big/vague tasks get a tiny first step + a few steps in the notes
     calendars: CalendarsConfig = Field(default_factory=CalendarsConfig)
 
     @model_validator(mode="before")
@@ -135,6 +142,24 @@ DEFAULT_COLLECTIONS = [
 ]
 
 
+class DailyConfig(BaseModel):
+    """Today's few things each morning, a shutdown recap each evening."""
+    enabled: bool = True
+    morning_time: str = "07:30"
+    evening_time: str = "20:30"
+    count: int = Field(3, ge=1, le=7)
+    today_view: bool = True   # move the picks into Reminders' Today view (due today); restored if not done
+    discord: bool = True      # send the briefing and recap to Discord
+
+    @field_validator("morning_time", "evening_time")
+    @classmethod
+    def _hhmm(cls, v: str) -> str:
+        m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", v or "")
+        if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+            raise ValueError("use a 24-hour time like 07:30")
+        return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+
 class AlertsConfig(BaseModel):
     discord_webhook_url: str | None = None
     heartbeat_timeout_s: int = 180
@@ -161,6 +186,7 @@ class Config(BaseModel):
     watch: WatchConfig = Field(default_factory=WatchConfig)
     rules: RulesConfig = Field(default_factory=RulesConfig)
     collections: list[Collection] = Field(default_factory=lambda: [c.model_copy() for c in DEFAULT_COLLECTIONS])
+    daily: DailyConfig = Field(default_factory=DailyConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)

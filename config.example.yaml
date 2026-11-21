@@ -19,6 +19,9 @@ watch:
       - handle: "+1785555XXXX"            # phone (E.164) or Apple ID email
         label: Wife
         enabled: true
+      # - handle: "+1785555YYYY"          # your own number = notes-to-self capture inbox
+      #   label: Me
+      #   is_me: true
       # - chat_id: "iMessage;+;chat123456"  # a whole group chat
       #   label: Family group
     allow_self_notes: false               # process messages *I* send in allowed chats
@@ -42,6 +45,18 @@ rules:
   person_tags: true                       # tag reminders with the person (#Sarah)
   person_in_title: false                  # "Pick up eggs · Sarah" (name + summary are always in the notes)
   open_item_days: 21                      # how far back "never mind" / "move it to Friday" can reach
+  track_promises: true                    # "I'll send it tonight" in my messages → a promise to-do
+  waiting_list: "⏳ Waiting on"            # "I'll get back to you Monday" → follow-up (column per person)
+  waiting_default_days: 3
+  breakdown: true                         # big/vague tasks get "👉 Start: …" + a few steps
+
+daily:                                    # today's few things each morning, a recap each evening
+  enabled: true
+  morning_time: "07:30"
+  evening_time: "20:30"
+  count: 3
+  today_view: true                        # move picks into Reminders' Today view (restored if not done)
+  discord: true
   calendars:
     default: Family
     default_duration_min: 60
