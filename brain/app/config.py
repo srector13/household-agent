@@ -69,8 +69,11 @@ class CalendarsConfig(BaseModel):
 class RulesConfig(BaseModel):
     default_alert_time: str = "16:00"
     review_threshold: float = Field(0.75, ge=0, le=1)
-    reminder_list: str = Field("Household", min_length=1)  # every reminder goes to this one list
+    reminder_list: str = Field("Household", min_length=1)  # every to-do goes to this one list
     create_missing_lists: bool = True
+    self_updates: bool = True        # my replies ("I'll do it tomorrow") may update/complete/cancel items
+    person_in_title: bool = False    # "Pick up eggs · Sarah" (the name is always in the notes)
+    open_item_days: int = Field(21, ge=1, le=365)  # how far back items stay editable by context
     calendars: CalendarsConfig = Field(default_factory=CalendarsConfig)
 
     @model_validator(mode="before")
@@ -91,6 +94,43 @@ class RulesConfig(BaseModel):
         if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
             raise ValueError("use a 24-hour time like 16:00")
         return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+
+class Collection(BaseModel):
+    """A place to save things that aren't to-dos (gift ideas, places to try…) — one Reminders list each."""
+    key: str = Field(pattern=r"^[a-z][a-z0-9_]{1,30}$")
+    label: str = Field(min_length=1, max_length=60)
+    description: str = Field(min_length=3, max_length=300)  # tells the model what belongs here
+    list: str = Field(min_length=1, max_length=80)          # Reminders list name; {person} = who it's about
+    enabled: bool = True
+
+    @field_validator("list")
+    @classmethod
+    def _template(cls, v: str) -> str:
+        try:
+            v.format(person="x")
+        except (KeyError, IndexError, ValueError) as e:
+            raise ValueError("list name may only use the {person} placeholder") from e
+        return v
+
+
+DEFAULT_COLLECTIONS = [
+    Collection(key="gift_ideas", label="Gift ideas", list="🎁 Gifts for {person}",
+               description="Something a person says they want, like, or need, or that would make a good gift for "
+                           "them — include the link or product details."),
+    Collection(key="about_person", label="Things to remember", list="👤 {person}",
+               description="Lasting facts about a person worth remembering: sizes, favorites, allergies, "
+                           "preferences, important names and dates."),
+    Collection(key="places", label="Places to try", list="📍 Places to try",
+               description="Restaurants, shops, trips, or activities someone suggests trying."),
+    Collection(key="watch_read", label="Watch & read", list="🎬 Watch & read",
+               description="Movies, shows, books, podcasts, or articles someone recommends."),
+    Collection(key="recipes", label="Recipes", list="🍳 Recipes to try",
+               description="Recipes or dishes someone wants to make or try, with the link."),
+    Collection(key="someday", label="Someday / ideas", list="💭 Someday",
+               description="Ideas and plans without a date: home projects, things to buy or research, "
+                           "\"we should…\" thoughts that aren't a concrete task."),
+]
 
 
 class AlertsConfig(BaseModel):
@@ -118,6 +158,7 @@ class Config(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     watch: WatchConfig = Field(default_factory=WatchConfig)
     rules: RulesConfig = Field(default_factory=RulesConfig)
+    collections: list[Collection] = Field(default_factory=lambda: [c.model_copy() for c in DEFAULT_COLLECTIONS])
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
@@ -131,6 +172,17 @@ class Config(BaseModel):
         except Exception as e:  # ZoneInfoNotFoundError is a KeyError, not a ValueError
             raise ValueError(f"unknown timezone {v!r}") from e
         return v
+
+    @field_validator("collections")
+    @classmethod
+    def _unique_keys(cls, v: list[Collection]) -> list[Collection]:
+        keys = [c.key for c in v]
+        if len(keys) != len(set(keys)):
+            raise ValueError("collection keys must be unique")
+        return v
+
+    def collection(self, key: str | None) -> Collection | None:
+        return next((c for c in self.collections if c.key == key and c.enabled), None)
 
     @property
     def tz(self) -> ZoneInfo:

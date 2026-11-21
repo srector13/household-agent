@@ -195,6 +195,19 @@ label.f .help, .help { font-weight: 400; color: var(--text-3); font-size: 12.5px
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 3px 9px; border-radius: 8px; background: var(--surface-3); color: var(--text); font-weight: 500; max-width: 100%; }
 .pill .i { color: var(--text-2); }
 .pill.ev .i { color: var(--info); } .pill.rem .i { color: var(--ok); }
+.pill.col .i { color: var(--accent-2); } .pill.upd .i { color: var(--warn); } .pill.can .i { color: var(--bad); }
+.avatar.me { color: var(--text-2); background: var(--surface-3); }
+.itemcard.col .ic { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); }
+.itemcard.upd .ic { background: var(--warn-soft); color: var(--warn); }
+.itemcard.can .ic { background: var(--bad-soft); color: var(--bad); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; overflow-x: auto; scrollbar-width: none; }
+.tabs a { padding: 9px 12px; font-weight: 600; font-size: 13.5px; color: var(--text-2); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+.tabs a.on { color: var(--text); border-bottom-color: var(--accent); }
+.tabs a .n { font-size: 11.5px; color: var(--text-3); background: var(--surface-3); border-radius: 99px; padding: 0 7px; }
+.hist { display: grid; gap: 3px; margin-top: 6px; font-size: 12px; color: var(--text-3); }
+.hist div { display: flex; gap: 6px; } .hist b { color: var(--text-2); font-weight: 600; }
+.colgroup h3 { font-size: 13px; margin: 0; padding: 12px 18px 4px; color: var(--text-2); font-weight: 650; display: flex; gap: 8px; align-items: center; }
+
 .erow .reason { font-size: 12.5px; color: var(--text-3); margin-top: 4px; }
 .empty { text-align: center; color: var(--text-3); padding: 36px 16px; }
 .empty .i { color: var(--border-strong); margin-bottom: 8px; }

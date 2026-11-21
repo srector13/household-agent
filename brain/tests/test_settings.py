@@ -153,7 +153,10 @@ def test_overview_and_items(client, llm):
     assert o["today"] == {"messages": 1, "created": 1} and o["funnel"]["created"] == 1
     assert "Pick up eggs" in client.get("/items").text
     client.post("/actions/undo/imessage:1", headers=J)
-    assert "Pick up eggs" not in client.get("/items").text.split("All items")[1].split("Next 14 days")[0]
+    d = client.get("/api/agent/commands?wait=0", headers=AUTH).json()["commands"][0]
+    client.post(f"/api/agent/commands/{d['command_id']}/result", headers=AUTH, json={"status": "done"})
+    assert "Pick up eggs" not in client.get("/items").text
+    assert "Pick up eggs" in client.get("/items?tab=history").text
 
 
 def test_settings_page_shows_people(client):

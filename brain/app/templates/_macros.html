@@ -9,8 +9,42 @@
 {% if e.extraction and e.extraction.actions %}
 <div class="out">
   {% for a in e.extraction.actions %}
-  <span class="pill {{ 'ev' if a.type == 'create_event' else 'rem' }}">{{ icon("calendar" if a.type == "create_event" else "check-square", 14) }}{{ a.title }}</span>
+  {% if a.type == "create_event" %}<span class="pill ev">{{ icon("calendar", 14) }}{{ a.title }}</span>
+  {% elif a.type == "save_to_collection" %}<span class="pill col">{{ icon("gift" if a.collection == "gift_ideas" else "bookmark", 14) }}{{ a.title }} <span class="faint">· {{ collection_label(a.collection) }}</span></span>
+  {% elif a.type == "update_item" %}<span class="pill upd">{{ icon("pencil", 14) }}{{ ref_title(e, a.ref) }}{% if a.due_date %} → {{ a.due_date|nicedate }}{% elif a.start %} → {{ a.start|nicedate }}{% endif %}</span>
+  {% elif a.type == "complete_item" %}<span class="pill rem">{{ icon("check", 14) }}Done: {{ ref_title(e, a.ref) }}</span>
+  {% elif a.type == "cancel_item" %}<span class="pill can">{{ icon("x", 14) }}Cancel: {{ ref_title(e, a.ref) }}</span>
+  {% else %}<span class="pill rem">{{ icon("check-square", 14) }}{{ a.title }}</span>{% endif %}
   {% endfor %}
 </div>
 {% endif %}
+{%- endmacro %}
+
+{# One command (DB row or planned command) as a card. #}
+{% macro cmd_card(c, old=False) -%}
+{% set p = c.payload %}{% set meta = c.meta or {} %}{% set purpose = c.purpose or "create" %}
+{% if purpose == "undo" %}
+  {% set ic, cls, t, m = "undo", "can", "Undo: " ~ (p.title or meta.title or p.kind or "item"), ("restore previous values" if c.op == "update_item" else "remove from Mac" if c.op == "delete_item" else "re-create") %}
+{% elif purpose == "cancel" %}
+  {% set ic, cls, t, m = "x", "can", "Cancel “" ~ (meta.title or "item") ~ "”", meta.why or "" %}
+{% elif purpose == "complete" %}
+  {% set ic, cls, t, m = "check", "", "Mark “" ~ (meta.title or "item") ~ "” done", meta.why or "" %}
+{% elif purpose == "update" %}
+  {% set ic, cls, t, m = "pencil", "upd", "Change “" ~ (meta.title or "item") ~ "”", meta.summary or "" %}
+{% elif c.op == "create_event" %}
+  {% set ic, cls, t = "calendar", "ev", p.title %}
+  {% set m = p.calendar ~ " · " ~ (p.start|localtime("%a %b %-d") ~ ", all day" if p.all_day else p.start|localtime ~ " – " ~ p.end|localtime("%-I:%M %p")) ~ (" · " ~ p.location if p.location else "") %}
+{% elif meta.collection %}
+  {% set ic, cls, t, m = ("gift" if meta.collection == "gift_ideas" else "bookmark"), "col", p.title, p.list %}
+{% else %}
+  {% set ic, cls, t = "check-square", "", p.title %}
+  {% set m = p.list ~ (" · due " ~ p.due ~ (" " ~ p.due_time if p.due_time else "") if p.due else "") ~ (" · ⏰ " ~ p.alert|localtime if p.alert else "") %}
+{% endif %}
+<div class="itemcard {{ cls }} {{ 'old' if old or c.status == 'cancelled' }}">
+  <span class="ic">{{ icon(ic, 17) }}</span>
+  <div style="min-width:0"><div class="t">{{ t }}</div>
+    <div class="m">{{ m }}{% if p.url %} · <a class="link" href="{{ p.url }}" target="_blank" rel="noopener">{{ icon("link", 12) }} link</a>{% endif %}{% if old %} · earlier run{% endif %}</div>
+    {% if c.error %}<div class="m" style="color:var(--bad)">{{ c.error }}</div>{% endif %}</div>
+  {% if c.status %}<span class="badge b-{{ {'done':'ok','failed':'bad','held':'warn','pending':'info','sent':'info'}.get(c.status, 'muted') }}">{{ {'done':'done on Mac','held':'awaiting review','sent':'sent to Mac'}.get(c.status, c.status) }}</span>{% else %}<span></span>{% endif %}
+</div>
 {%- endmacro %}

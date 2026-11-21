@@ -13,6 +13,7 @@ from .config import Config
 from .extract import LLMClient, LLMError, LLMUnavailable, PromptTemplate, extract
 from .gate import allowlist_label, gate
 from .heartbeat import Alerter, Health
+from .items import Items, chat_key, create_payload
 from .models import DB
 from .planner import Plan, plan
 from .schemas import Event, Extraction
@@ -38,6 +39,11 @@ class Pipeline:
         self._sem = asyncio.Semaphore(2)
         self._inflight: set[str] = set()
         self._tasks: set[asyncio.Task] = set()
+        self.items = Items(db, cfg)
+        queue.items = self.items
+        n = self.items.backfill()
+        if n:
+            log.info("item registry: backfilled %d existing items", n)
 
     # ---- helpers ---------------------------------------------------------------
     def _set(self, event_id: str, **fields: Any) -> None:
@@ -77,7 +83,12 @@ class Pipeline:
                                               "context_lines": len(ev.recent_context)})
         self.db.trace(ev.event_id, "allowlist", {"allowed": True, "label": label})
         reason = gate(self.cfg, ev)
-        self.db.trace(ev.event_id, "gate", {"decision": "skip" if reason else "pass", "reason": reason})
+        if reason == "from_me" and self.cfg.rules.self_updates:
+            # My own reply can still move, finish or cancel something in this conversation.
+            if self.items.open_for(chat_key(ev), datetime.now(timezone.utc)):
+                reason = gate(self.cfg, ev.model_copy(update={"is_from_me": False}))
+        self.db.trace(ev.event_id, "gate", {"decision": "skip" if reason else "pass", "reason": reason,
+                                            "from_me": ev.is_from_me})
         if reason:
             self._set(ev.event_id, status=m.SKIPPED, reason=reason)
             return {"status": "accepted", "event_id": ev.event_id, "result": m.SKIPPED}
@@ -106,9 +117,10 @@ class Pipeline:
             return
         ev = self.row_to_event(row)
         self.db.update_event(event_id, attempts=row["attempts"] + 1)
+        open_items = self.items.open_for(chat_key(ev), datetime.now(timezone.utc))
         try:
             # Resolve relative dates against when the message arrived, not when we got to it.
-            res = await extract(self.cfg, self.llm, self.prompt, ev, ev.received_at)
+            res = await extract(self.cfg, self.llm, self.prompt, ev, ev.received_at, open_items)
         except LLMUnavailable as e:
             self.db.trace(event_id, "extract_error", {"error": str(e), "retry": True})
             self.db.update_event(event_id, last_error=str(e))
@@ -127,32 +139,57 @@ class Pipeline:
         ex = res.extraction
         self.db.trace(event_id, "extract", {
             "prompt_version": res.prompt_version, "prompt": res.messages, "raw": res.raw,
-            "parsed": ex.model_dump(),
+            "parsed": ex.model_dump(), "open_items": [it["item_id"] for it in open_items],
         }, res.duration_ms)
         self.db.update_event(
             event_id, extraction=ex.model_dump(), confidence=ex.confidence, actionable=int(ex.actionable),
             extract_ms=res.duration_ms, prompt_version=res.prompt_version, last_error=None,
         )
-        await self._apply_plan(ev, ex)
+        self.db.update_event(event_id, open_refs=json.dumps([it["item_id"] for it in open_items]))
+        await self._apply_plan(ev, ex, open_items=open_items)
 
-    async def _apply_plan(self, ev: Event, ex: Extraction, *, force: bool = False) -> Plan:
-        p = plan(self.cfg, ev, ex, datetime.now(timezone.utc), force=force)
+    def _open_refs(self, row: dict[str, Any]) -> list[dict]:
+        """The open items exactly as numbered for this event's extraction."""
+        ids = json.loads(row.get("open_refs") or "[]")
+        return [it for it in (self.items.get(i) for i in ids) if it]
+
+    async def _apply_plan(self, ev: Event, ex: Extraction, *, force: bool = False,
+                          open_items: list[dict] | None = None) -> Plan:
+        p = plan(self.cfg, ev, ex, datetime.now(timezone.utc), force=force, open_items=open_items)
         self.db.trace(ev.event_id, "plan", {
-            "commands": [c.model_dump() for c in p.commands], "review_reasons": p.review_reasons, "forced": force,
+            "commands": [c.model_dump(exclude_none=True) for c in p.commands], "review_reasons": p.review_reasons,
+            "skipped": p.skipped, "forced": force,
         })
         if not p.commands and not p.review_reasons:
-            self._set(ev.event_id, status=m.SKIPPED, reason="not actionable")
+            self._set(ev.event_id, status=m.SKIPPED, reason="; ".join(p.skipped) or "not actionable")
             return p
         status = "held" if p.needs_review else "pending"
         gen = self.db.get_event(ev.event_id)["generation"]
-        ids = [self.db.insert_command(ev.event_id, c.op, c.payload, status, seq=i, generation=gen)
-               for i, c in enumerate(p.commands)]
-        self.db.trace(ev.event_id, "queue", {"command_ids": ids, "status": status})
+        key = chat_key(ev)
+        ids, direct = [], []
+        for i, c in enumerate(p.commands):
+            item_id = c.item_id
+            if c.new_item:
+                ni = c.new_item
+                item_id = self.items.create(event_id=ev.event_id, seq=ni["seq"], kind=ni["kind"],
+                                            collection=ni["collection"], chat=key, person=ni["person"],
+                                            title=ni["title"], state=ni["state"], tag=ni["tag"],
+                                            status="proposed" if p.needs_review else "planned")
+            elif not p.needs_review and self._edit_proposed(ev, c):
+                direct.append(c.meta.get("title") if c.meta else c.item_id)
+                continue
+            ids.append(self.db.insert_command(ev.event_id, c.op, c.payload, status, seq=i, generation=gen,
+                                              item_id=item_id, purpose=c.purpose, meta=c.meta))
+        self.db.trace(ev.event_id, "queue", {"command_ids": ids, "status": status,
+                                             **({"edited_pending_review": direct} if direct else {})})
+        if not ids and direct:
+            self._set(ev.event_id, status=m.DONE, reason="changed an item that is still waiting for review")
+            return p
         if p.needs_review:
             reason = "; ".join(p.review_reasons)
             self._set(ev.event_id, status=m.NEEDS_REVIEW, reason=reason)
             link = f"{self.cfg.dashboard.public_url.rstrip('/')}/events/{ev.event_id}"
-            titles = ", ".join(c.payload["title"] for c in p.commands) or "(no items)"
+            titles = ", ".join(_describe_cmd(c) for c in p.commands) or "(no items)"
             await self.alerter.send(
                 "needs_review",
                 f"📝 Needs review — {ev.sender_label or ev.sender_handle}: “{ev.text[:200]}”\n"
@@ -162,6 +199,32 @@ class Pipeline:
             self._set(ev.event_id, status=m.QUEUED, reason=None)
             await self.queue.wake()
         return p
+
+    def _edit_proposed(self, ev: Event, c) -> bool:
+        """An item still waiting for review is changed in place instead of via the Mac."""
+        item = self.items.get(c.item_id)
+        if not item or item["status"] != "proposed":
+            return False
+        held = self.db.one("SELECT command_id FROM commands WHERE item_id=? AND status='held' "
+                           "AND op IN ('create_reminder','create_event')", (item["item_id"],))
+        if not held:
+            return False
+        cmd = self.db.get_command(held["command_id"])
+        if c.purpose in ("cancel", "complete"):
+            self.db.update_command(cmd["command_id"], status="cancelled", completed_at=m.utcnow())
+            self.items.update(item["item_id"], status="cancelled")
+            self.items.log(item["item_id"], ev.event_id, "cancelled", {"before_approval": True})
+            origin = self.db.get_event(cmd["event_id"])
+            if origin and origin["status"] == m.NEEDS_REVIEW and not any(
+                    x["status"] == "held" for x in self.db.commands_for_event(cmd["event_id"])):
+                self._set(cmd["event_id"], status=m.SKIPPED, reason=f"cancelled by a later message ({ev.event_id})")
+            return True
+        changes = {k: v for k, v in c.payload.get("changes", {}).items() if k != "completed"}
+        self.db.update_command(cmd["command_id"], payload=json.dumps({**cmd["payload"], **changes}))
+        self.items.update(item["item_id"], state={**item["state"], **changes},
+                          **({"title": changes["title"]} if "title" in changes else {}))
+        self.items.log(item["item_id"], ev.event_id, "updated", {"changes": changes, "before_approval": True})
+        return True
 
     # ---- dashboard actions -----------------------------------------------------------
     def _require(self, event_id: str) -> dict[str, Any]:
@@ -179,7 +242,11 @@ class Pipeline:
             raise ActionError("nothing to approve — use “Reprocess with edits” to add items")
         for c in held:
             fields: dict[str, Any] = {"status": "pending"}
-            if c["op"] == "create_reminder" and c["payload"].get("list") != self.cfg.rules.reminder_list:
+            item = self.items.get(c["item_id"])
+            if item and item["status"] == "proposed":
+                self.items.update(item["item_id"], status="planned")
+            if (c["op"] == "create_reminder" and not (c["meta"] or {}).get("collection")
+                    and c["payload"].get("list") != self.cfg.rules.reminder_list):
                 # The list may have been changed in Settings while this waited for review.
                 fields["payload"] = json.dumps({**c["payload"], "list": self.cfg.rules.reminder_list})
             self.db.update_command(c["command_id"], **fields)
@@ -191,37 +258,54 @@ class Pipeline:
         row = self._require(event_id)
         if row["status"] != m.NEEDS_REVIEW:
             raise ActionError(f"event is {row['status']}, not needs_review")
-        self._cancel_open(event_id)
+        self._cancel_open(event_id, item_status="rejected")
         self.db.trace(event_id, "review", {"decision": "rejected"})
         self._set(event_id, status=m.REJECTED, reason="rejected in dashboard")
 
-    def _cancel_open(self, event_id: str) -> None:
+    def _cancel_open(self, event_id: str, item_status: str = "undone") -> None:
         for c in self.db.commands_for_event(event_id):
-            # Never cancel queued deletes: they clean up items that already exist.
+            # Never cancel queued inverses: they clean up items that already exist.
             if c["status"] in ("held", "pending") and not c["undo_of"]:
                 self.db.update_command(c["command_id"], status="cancelled", completed_at=m.utcnow())
+                if c["op"] in ("create_reminder", "create_event") and c["item_id"]:
+                    self.items.update(c["item_id"], status=item_status)
+                    self.items.log(c["item_id"], event_id, item_status, None)
 
-    def _queue_deletes(self, event_id: str, generation: int) -> list[str]:
-        """Queue delete_item for every created item of `generation` not already undone."""
+    def _queue_inverses(self, event_id: str, generation: int, why: str) -> list[str]:
+        """Queue the opposite of everything this event did on the Mac (newest first)."""
         cmds = [c for c in self.db.commands_for_event(event_id) if c["generation"] == generation]
         already = {c["undo_of"] for c in cmds if c["undo_of"] and c["status"] != "failed"}
         ids = []
-        for c in cmds:
-            if c["undo_of"] or c["status"] != "done" or not c["apple_item_id"] or c["command_id"] in already:
+        for c in reversed(cmds):
+            if c["undo_of"] or c["status"] != "done" or c["command_id"] in already:
                 continue
-            kind = "reminder" if c["op"] == "create_reminder" else "event"
-            ids.append(self.db.insert_command(
-                event_id, "delete_item", {"apple_item_id": c["apple_item_id"], "kind": kind},
-                "pending", seq=c["seq"], undo_of=c["command_id"], generation=generation,
-            ))
+            item = self.items.get(c["item_id"])
+            apple = (item or {}).get("apple_item_id") or c["apple_item_id"] or c["payload"].get("apple_item_id")
+            tag = (item or {}).get("tag") or c["payload"].get("tag")
+            kind = (item or {}).get("kind") or ("event" if c["op"] == "create_event" else "reminder")
+            if c["op"] in ("create_reminder", "create_event"):
+                op, payload = "delete_item", {"apple_item_id": apple, "tag": tag, "kind": kind}
+            elif c["op"] == "update_item":
+                prev = (c["meta"] or {}).get("previous")
+                if not prev:
+                    continue
+                op, payload = "update_item", {"apple_item_id": apple, "tag": tag, "kind": kind, "changes": prev,
+                                              "notes_append": f"↩︎ Change undone ({why})"}
+            elif c["op"] == "delete_item" and c["purpose"] == "cancel" and item:
+                op, payload = create_payload(item)
+            else:
+                continue
+            ids.append(self.db.insert_command(event_id, op, payload, "pending", seq=c["seq"],
+                                              undo_of=c["command_id"], generation=generation,
+                                              item_id=c["item_id"], purpose="undo"))
         return ids
 
     async def undo(self, event_id: str) -> None:
         row = self._require(event_id)
         self._cancel_open(event_id)
-        ids = self._queue_deletes(event_id, row["generation"])
+        ids = self._queue_inverses(event_id, row["generation"], "undo")
         if not ids:
-            raise ActionError("nothing created yet to undo")
+            raise ActionError("nothing has been done on the Mac yet to undo")
         self.db.trace(event_id, "undo", {"command_ids": ids})
         self._set(event_id, status=m.UNDOING, reason="undo requested")
         await self.queue.wake()
@@ -234,7 +318,7 @@ class Pipeline:
         """
         event_id = row["event_id"]
         self._cancel_open(event_id)
-        ids = self._queue_deletes(event_id, row["generation"])
+        ids = self._queue_inverses(event_id, row["generation"], "re-run")
         if ids:
             self.db.trace(event_id, "undo", {"command_ids": ids, "why": "start over"})
         gen = row["generation"] + 1
@@ -263,7 +347,7 @@ class Pipeline:
         self.db.trace(event_id, "edit", {"extraction": ex.model_dump()})
         self.db.update_event(event_id, extraction=ex.model_dump(), confidence=ex.confidence,
                              actionable=int(ex.actionable))
-        await self._apply_plan(self.row_to_event(row), ex, force=True)
+        await self._apply_plan(self.row_to_event(row), ex, force=True, open_items=self._open_refs(row))
 
     # ---- background ------------------------------------------------------------------
     async def retry_received(self) -> None:
@@ -276,3 +360,14 @@ class Pipeline:
             await self.process(r["event_id"])
             if self.health.llm_fail_streak:
                 break  # still down; try again next round
+
+
+def _describe_cmd(c) -> str:
+    title = c.payload.get("title") or (c.meta or {}).get("title") or "item"
+    if c.purpose == "cancel":
+        return f"cancel “{title}”"
+    if c.purpose == "complete":
+        return f"mark “{title}” done"
+    if c.purpose == "update":
+        return f"change “{title}” ({(c.meta or {}).get('summary', '')})"
+    return title

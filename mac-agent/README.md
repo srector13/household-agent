@@ -20,7 +20,7 @@ Sources/MacAgentCore/
   MessagesDatabase.swift      chat.db queries + EventBuilder (rows → events, recent_context)
   AttributedBodyDecoder.swift typedstream NSAttributedString → text (pure Swift)
   FileWatcher.swift           DispatchSource on chat.db and chat.db-wal (500 ms debounce in Agent)
-  EventKitService.swift       reminders / events / delete, tag-based idempotency
+  EventKitService.swift       reminders / events / update / delete, tag-based idempotency
   ItemStore.swift             EventKit abstraction + CommandExecutor
   BrainClient.swift           HTTP client (bearer token)
   OfflineBuffer.swift         durable JSONL outbox
@@ -136,10 +136,13 @@ security add-generic-password -U -s com.household.mac-agent -a agent_token -w '<
   `401` and `5xx`/network errors keep the event buffered and retry with exponential backoff.
 - **First run** starts after the current max ROWID — no history is sent. `--backfill N` resends
   the last N messages (the brain dedupes on `event_id`).
-- **Commands:** `create_reminder`, `create_event`, `delete_item`. Before creating, the agent searches
-  for an item whose notes contain the payload `tag` (`[ha:<event_id>]`) and returns that instead of
-  creating a duplicate, so re-delivered commands are safe. Deleting an item that is already gone is
-  reported as `done`.
+- **Commands:** `create_reminder`, `create_event`, `update_item`, `delete_item` (see
+  [`../docs/API.md`](../docs/API.md)). Before creating, the agent searches for an item whose notes
+  contain the payload `tag` (`[ha:<event_id>]`) and returns that instead of creating a duplicate, so
+  re-delivered commands are safe. `update_item` (change the date, title, alert, mark completed, append a
+  note) and `delete_item` find the item by its identifier, falling back to the tag. Deleting an item that
+  is already gone is reported as `done`; updating one that can't be found is `failed`. Creates may carry
+  a `url` (shown on the reminder/event), and list names may include emoji and people's names.
 - `sender_handle` for messages you sent (`is_from_me: true`) is the other party's handle in 1:1 chats
   and the chat identifier in group chats.
 

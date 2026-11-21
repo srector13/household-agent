@@ -58,6 +58,9 @@ struct UnavailableStore: ItemStore {
     func createReminder(_ p: ReminderPayload) async throws -> String { throw ItemStoreError("EventKit unavailable") }
     func createEvent(_ p: EventPayload) async throws -> String { throw ItemStoreError("EventKit unavailable") }
     func deleteItem(id: String, kind: ItemKind?) async throws -> Bool { throw ItemStoreError("EventKit unavailable") }
+    func updateItem(id: String, kind: ItemKind, changes: ItemChanges, notesAppend: String?) async throws -> Bool {
+        throw ItemStoreError("EventKit unavailable")
+    }
     func permissionFlags() async -> (reminders: Bool, calendar: Bool) { (false, false) }
 }
 

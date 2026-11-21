@@ -29,10 +29,11 @@ EDITABLE: dict[str, Any] = {
                  "folders": True, "allow_senders": True, "labels": True},
     },
     "rules": {"default_alert_time": True, "review_threshold": True, "reminder_list": True,
-              "create_missing_lists": True,
+              "create_missing_lists": True, "self_updates": True, "person_in_title": True, "open_item_days": True,
               "calendars": {"default": True, "default_duration_min": True, "alert_minutes_before": True}},
     "alerts": {"discord_webhook_url": True, "heartbeat_timeout_s": True},
     "dashboard": {"public_url": True},
+    "collections": True,
 }
 SECRETS = {("llm", "api_key"), ("watch", "mail", "password"), ("alerts", "discord_webhook_url")}
 

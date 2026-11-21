@@ -41,7 +41,31 @@ def _render(template: str, values: dict[str, str]) -> str:
     return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), template)
 
 
-def build_messages(cfg: Config, tpl: PromptTemplate, ev: Event, now: datetime) -> list[dict[str, str]]:
+def describe_item(cfg: Config, it: dict) -> str:
+    st = it["state"]
+    if it.get("collection"):
+        col = next((c for c in cfg.collections if c.key == it["collection"]), None)
+        what = f"Saved to {col.label if col else it['collection']} ({it.get('person') or '?'})"
+    else:
+        what = "To-do" if it["kind"] == "reminder" else "Event"
+    bits = [f"{what}: “{it['title']}”"]
+    if it["kind"] == "reminder" and st.get("due"):
+        d = datetime.fromisoformat(st["due"]).strftime("%a %b %-d")
+        bits.append(f"due {d}" + (f" {st['due_time']}" if st.get("due_time") else ""))
+    elif it["kind"] == "reminder" and not it.get("collection"):
+        bits.append("no due date")
+    if it["kind"] == "event" and st.get("start"):
+        s = datetime.fromisoformat(st["start"]).astimezone(cfg.tz)
+        bits.append(s.strftime("%a %b %-d") + ("" if st.get("all_day") else s.strftime(" %-I:%M %p")))
+    if it.get("status") == "proposed":
+        bits.append("awaiting my approval")
+    created = datetime.fromisoformat(it["created_at"]).astimezone(cfg.tz).strftime("%a %-I:%M %p")
+    bits.append(f"created {created}")
+    return " — ".join(bits)
+
+
+def build_messages(cfg: Config, tpl: PromptTemplate, ev: Event, now: datetime,
+                   open_items: list[dict] | None = None) -> list[dict[str, str]]:
     now = now.astimezone(cfg.tz)
     days = []
     for i in range(0, 15):
@@ -57,6 +81,19 @@ def build_messages(cfg: Config, tpl: PromptTemplate, ev: Event, now: datetime) -
         "calendars": json.dumps([cfg.rules.calendars.default]),
         "context": "\n".join(f"- {c}" for c in ev.recent_context[-5:]) or "(none)",
         "sender": ev.sender_label or ev.sender_handle or "unknown",
+        "open_items": "\n".join(f"{i}. {describe_item(cfg, it)}" for i, it in enumerate(open_items or [], 1))
+                      or "(none)",
+        "collections": "\n".join(f"  - `{c.key}`: {c.description}" for c in cfg.collections if c.enabled)
+                       or "  (none configured — do not use save_to_collection)",
+        "direction": (f"New message from ME (the user) to {ev.sender_label or ev.sender_handle}" if ev.is_from_me
+                      else f"New message from {ev.sender_label or ev.sender_handle or 'unknown'}"),
+        "direction_rules": (
+            "- This new message was written by ME (the user), not by the other person. Treat it as me "
+            "committing to, rescheduling, finishing, or dropping something: \"I'll do it tomorrow\" → "
+            "update_item with tomorrow's date; \"done\"/\"got it\" after doing it → complete_item. "
+            + ("I may also note new things for myself." if cfg.watch.imessage.allow_self_notes
+               else "Do NOT create new items from my own message — only update/complete/cancel open items.")
+        ) if ev.is_from_me else "",
         "received": received.strftime("%a %Y-%m-%d %H:%M"),
         "subject": f"Subject: {ev.subject}\n" if ev.subject else "",
         "message": ev.text.strip(),
@@ -174,8 +211,9 @@ class ExtractResult:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
-async def extract(cfg: Config, llm: LLMClient, tpl: PromptTemplate, ev: Event, now: datetime) -> ExtractResult:
-    messages = build_messages(cfg, tpl, ev, now)
+async def extract(cfg: Config, llm: LLMClient, tpl: PromptTemplate, ev: Event, now: datetime,
+                  open_items: list[dict] | None = None) -> ExtractResult:
+    messages = build_messages(cfg, tpl, ev, now, open_items)
     t = time.perf_counter()
     raw = await llm.complete(messages)
     ms = int((time.perf_counter() - t) * 1000)

@@ -27,6 +27,7 @@ from .extract import LLMClient, LLMError, VLLMClient, extract
 from .gate import gate, normalize_handle
 from .heartbeat import Alerter, Health, run_every
 from .icons import icon
+from .items import chat_key
 from .models import DB
 from .pipeline import ActionError, Pipeline
 from .planner import plan
@@ -37,7 +38,7 @@ log = logging.getLogger("brain")
 HERE = Path(__file__).parent
 
 STATUS_BADGE = {
-    m.DONE: ("Created", "ok"), m.QUEUED: ("Queued", "info"), m.RECEIVED: ("Processing", "info"),
+    m.DONE: ("Done", "ok"), m.QUEUED: ("Queued", "info"), m.RECEIVED: ("Processing", "info"),
     m.SKIPPED: ("Skipped", "muted"), m.NEEDS_REVIEW: ("Needs review", "warn"), m.FAILED: ("Failed", "bad"),
     m.REJECTED: ("Rejected", "muted"), m.UNDOING: ("Undoing", "info"), m.UNDONE: ("Undone", "muted"),
 }
@@ -128,6 +129,33 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
     env.filters["localtime"] = localtime
     env.filters["pretty"] = lambda v: json.dumps(v, indent=2, ensure_ascii=False, default=str)
     env.filters["handle"] = normalize_handle
+
+    def nicedate(value: str | None) -> str:
+        if not value:
+            return ""
+        try:
+            if len(value) == 10:
+                return datetime.fromisoformat(value).strftime("%a %b %-d")
+            return datetime.fromisoformat(value).strftime("%a %b %-d %-I:%M %p")
+        except ValueError:
+            return value
+
+    env.filters["nicedate"] = nicedate
+
+    def ref_title(e: dict, ref: int | None) -> str:
+        """Title of the open item an action's `ref` pointed at when this event was processed."""
+        try:
+            ids = json.loads(e.get("open_refs") or "[]")
+            it = pipeline.items.get(ids[int(ref) - 1]) if ref else None
+        except (ValueError, IndexError, TypeError):
+            it = None
+        return it["title"] if it else f"item #{ref}"
+
+    def collection_label(key: str | None) -> str:
+        c = next((c for c in cfg.collections if c.key == key), None)
+        return c.label if c else (key or "")
+
+    env.globals.update(ref_title=ref_title, collection_label=collection_label)
     env.globals.update(badge=lambda s: STATUS_BADGE.get(s, (s, "muted")), version=__version__,
                        step_label=lambda s: STEP_LABEL.get(s, s), icon=icon)
 
@@ -301,8 +329,27 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         return page(request, "review.html", "review", items=items)
 
     @app.get("/items", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
-    async def items_page(request: Request):
-        return page(request, "items.html", "items", items=views.live_items(db), upcoming=views.upcoming(db, cfg, 14))
+    async def items_page(request: Request, tab: str = "todos"):
+        reg = pipeline.items
+        counts = {
+            "todos": len(reg.listing(statuses=("proposed", "planned", "active"), collection=None)),
+            "collections": len(reg.listing(statuses=("planned", "active"), collection=True)),
+            "history": len(reg.listing(statuses=("completed", "cancelled", "undone", "rejected", "failed"))),
+        }
+        groups: dict[str, dict[str, list]] = {}
+        if tab == "collections":
+            rows = views.item_cards(db, reg.listing(statuses=("planned", "active"), collection=True))
+            for it in rows:
+                groups.setdefault(it["collection"], {}).setdefault(it["state"].get("list") or "?", []).append(it)
+            rows = []
+        elif tab == "history":
+            rows = views.item_cards(db, reg.listing(statuses=("completed", "cancelled", "undone", "rejected", "failed"),
+                                                    limit=200))
+        else:
+            tab = "todos"
+            rows = views.item_cards(db, reg.listing(statuses=("proposed", "planned", "active"), collection=None))
+        return page(request, "items.html", "items", tab=tab, rows=rows, groups=groups, counts=counts,
+                    upcoming=views.upcoming(db, cfg, 14))
 
     @app.get("/partials/row/{event_id:path}", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
     async def row_partial(request: Request, event_id: str):
@@ -321,7 +368,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         can = {
             "approve": ev["status"] == m.NEEDS_REVIEW and any(c["status"] == "held" for c in gen_cmds),
             "reject": ev["status"] == m.NEEDS_REVIEW,
-            "undo": any(c["status"] == "done" and not c["undo_of"] and c["apple_item_id"] for c in gen_cmds)
+            "undo": any(c["status"] == "done" and not c["undo_of"] for c in gen_cmds)
                     and ev["status"] not in (m.UNDONE, m.UNDOING),
             "retry": ev["status"] not in (m.UNDOING,),
         }
@@ -376,23 +423,27 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         return page(request, "lab.html", "lab", result=None, form={})
 
     @app.post("/lab", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
-    async def lab_run(request: Request, text: str = Form(...), sender: str = Form("Wife"),
-                      context: str = Form(""), now: str = Form("")):
+    async def lab_run(request: Request, text: str = Form(...), who: str = Form(""),
+                      context: str = Form(""), now: str = Form(""), from_me: bool = Form(False)):
         """Dry run: extraction + plan, nothing stored, nothing sent to the Mac."""
         when = datetime.fromisoformat(now).replace(tzinfo=cfg.tz) if now else datetime.now(cfg.tz)
-        ev = Event(event_id="lab", source="manual", sender_handle="", sender_label=sender,
-                   received_at=when, text=text, recent_context=[l for l in context.splitlines() if l.strip()])
-        result: dict[str, Any] = {"gate": gate(cfg, ev)}
+        entry = next((a for a in cfg.watch.imessage.allow if (a.handle or a.chat_id) == who), None)
+        ev = Event(event_id="lab", source="imessage", sender_handle=(entry.handle if entry else "") or "",
+                   chat_id=entry.chat_id if entry else None, sender_label=(entry.label if entry else None) or "Them",
+                   is_from_me=from_me, received_at=when, text=text,
+                   recent_context=[l for l in context.splitlines() if l.strip()])
+        open_items = pipeline.items.open_for(chat_key(ev), datetime.now(cfg.tz)) if entry else []
+        result: dict[str, Any] = {"gate": gate(cfg, ev), "open_items": open_items}
         try:
-            res = await extract(cfg, llm, pipeline.prompt, ev, when)
-            p = plan(cfg, ev, res.extraction, when)
+            res = await extract(cfg, llm, pipeline.prompt, ev, when, open_items)
+            p = plan(cfg, ev, res.extraction, when, open_items=open_items)
             result.update(prompt=res.messages, raw=res.raw, parsed=res.extraction.model_dump(),
                           ms=res.duration_ms, commands=[c.model_dump() for c in p.commands],
-                          review=p.review_reasons)
+                          review=p.review_reasons, skipped=p.skipped)
         except LLMError as e:
             result.update(error=str(e), raw=getattr(e, "raw", None))
         return page(request, "lab.html", "lab", result=result,
-                    form={"text": text, "sender": sender, "context": context, "now": now})
+                    form={"text": text, "who": who, "context": context, "now": now, "from_me": from_me})
 
     # old URLs
     for old, new in {"/health": "/system", "/stats": "/", "/playground": "/lab"}.items():

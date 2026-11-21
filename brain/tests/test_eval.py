@@ -14,9 +14,11 @@ def perfect_extraction(case):
         return {"actionable": False, "actions": [], "confidence": 0.95, "reasoning_brief": "n/a"}
     actions = []
     for a in exp["actions"]:
-        base = {k: None for k in ["list", "due_date", "due_time", "start", "end", "location", "calendar", "notes"]}
-        base.update(type=a["type"], title=f"Do {a['title_any'][0]}", all_day=False, source_quote=case["text"])
-        for k in ("list", "due_date", "due_time", "start", "end", "all_day"):
+        base = {k: None for k in ["ref", "collection", "person", "due_date", "due_time", "start", "end", "location",
+                                  "url", "notes", "summary"]}
+        title = f"Do {a['title_any'][0]}" if "title_any" in a else ""
+        base.update(type=a["type"], title=title, all_day=False, source_quote=case["text"])
+        for k in ("ref", "collection", "person", "url", "due_date", "due_time", "start", "end", "all_day"):
             if k in a:
                 base[k] = a[k]
         actions.append(base)
@@ -28,7 +30,8 @@ def test_golden_set_shape():
     assert len(cases) >= 30
     assert len({c["id"] for c in cases}) == len(cases)
     kinds = {a["type"] for c in cases for a in c["expect"].get("actions", [])}
-    assert kinds == {"create_reminder", "create_event"}
+    assert kinds == {"create_reminder", "create_event", "save_to_collection", "update_item", "complete_item",
+                     "cancel_item"}
     assert sum(not c["expect"]["actionable"] for c in cases) >= 8
 
 

@@ -42,6 +42,7 @@ class CommandQueue:
         self.bus = bus
         self._cond = asyncio.Condition()
         self._gen = 0
+        self.items = None  # set by the pipeline (item registry)
 
     async def wake(self) -> None:
         async with self._cond:
@@ -75,12 +76,14 @@ class CommandQueue:
                     r["command_id"], status="sent", sent_at=now.isoformat(timespec="milliseconds"),
                     attempts=r["attempts"] + 1,
                 )
-                out.append({
-                    "command_id": r["command_id"],
-                    "event_id": r["event_id"],
-                    "op": r["op"],
-                    "payload": json.loads(r["payload"]),
-                })
+                payload = json.loads(r["payload"])
+                if "apple_item_id" in payload and not payload["apple_item_id"] and self.items and r["item_id"]:
+                    # The create may have finished since this was queued.
+                    item = self.items.get(r["item_id"])
+                    if item and item["apple_item_id"]:
+                        payload["apple_item_id"] = item["apple_item_id"]
+                out.append({"command_id": r["command_id"], "event_id": r["event_id"], "op": r["op"],
+                            "payload": payload})
         return out
 
     async def poll(self, wait_s: float) -> list[dict[str, Any]]:
@@ -116,8 +119,10 @@ class CommandQueue:
             error=res.error, completed_at=m.utcnow(),
         )
         self.db.trace(cmd["event_id"], "command_result", {
-            "command_id": command_id, "op": cmd["op"], **res.model_dump(),
+            "command_id": command_id, "op": cmd["op"], "purpose": cmd.get("purpose"), **res.model_dump(),
         })
+        if self.items:
+            self.items.on_result(cmd, res)
         self.refresh_event(cmd["event_id"])
         return self.db.get_command(command_id)
 

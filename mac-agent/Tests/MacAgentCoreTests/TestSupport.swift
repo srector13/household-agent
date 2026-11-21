@@ -94,10 +94,21 @@ actor FakeItemStore: ItemStore {
         var kind: ItemKind
         var title: String
         var notes: String?
+        var url: String?
+        var due: String?
+        var dueTime: String?
+        var alert: String?
+        var start: String?
+        var end: String?
+        var allDay: Bool = false
+        var location: String?
+        var completed = false
+        var list: String?
     }
 
     var items: [String: Item] = [:]
     var createCount = 0
+    var updateCount = 0
     private var next = 0
 
     func findItem(taggedWith tag: String, kind: ItemKind, around date: Date?) async throws -> String? {
@@ -108,7 +119,8 @@ actor FakeItemStore: ItemStore {
         next += 1
         createCount += 1
         let id = "rem-\(next)"
-        items[id] = Item(kind: .reminder, title: p.title, notes: p.notes)
+        items[id] = Item(kind: .reminder, title: p.title, notes: p.notes, url: p.url, due: p.due, dueTime: p.dueTime,
+                         alert: p.alert, list: p.list)
         return id
     }
 
@@ -116,12 +128,38 @@ actor FakeItemStore: ItemStore {
         next += 1
         createCount += 1
         let id = "evt-\(next)"
-        items[id] = Item(kind: .event, title: p.title, notes: p.notes)
+        items[id] = Item(kind: .event, title: p.title, notes: p.notes, url: p.url, start: p.start, end: p.end,
+                         allDay: p.allDay ?? false, location: p.location)
         return id
     }
 
     func deleteItem(id: String, kind: ItemKind?) async throws -> Bool {
         items.removeValue(forKey: id) != nil
+    }
+
+    func updateItem(id: String, kind: ItemKind, changes ch: ItemChanges, notesAppend: String?) async throws -> Bool {
+        guard var it = items[id] else { return false }
+        func apply<T>(_ patch: Patch<T>, _ field: inout T?) {
+            switch patch {
+            case .set(let v): field = v
+            case .clear: field = nil
+            case .keep: break
+            }
+        }
+        if let t = ch.title.value { it.title = t }
+        apply(ch.due, &it.due)
+        if !ch.due.isKeep || !ch.dueTime.isKeep { it.dueTime = ch.dueTime.value }
+        apply(ch.alert, &it.alert)
+        apply(ch.start, &it.start)
+        apply(ch.end, &it.end)
+        apply(ch.location, &it.location)
+        apply(ch.url, &it.url)
+        if let a = ch.allDay.value { it.allDay = a }
+        if let c = ch.completed.value { it.completed = c }
+        if let note = notesAppend { it.notes = NotesEditor.append(note, to: it.notes) }
+        items[id] = it
+        updateCount += 1
+        return true
     }
 
     func permissionFlags() async -> (reminders: Bool, calendar: Bool) { (true, true) }

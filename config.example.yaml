@@ -36,12 +36,25 @@ watch:
 rules:
   default_alert_time: "16:00"
   review_threshold: 0.75
-  reminder_list: Household                # every reminder goes to this one list
+  reminder_list: Household                # every to-do goes to this one list
   create_missing_lists: true
+  self_updates: true                      # my replies ("I'll do it tomorrow", "got it") may change items
+  person_in_title: false                  # "Pick up eggs · Sarah" (name + summary are always in the notes)
+  open_item_days: 21                      # how far back "never mind" / "move it to Friday" can reach
   calendars:
     default: Family
     default_duration_min: 60
     alert_minutes_before: 30
+
+# Things worth keeping that aren't to-dos. Each goes to its own Reminders list; {person} = who it's
+# about. Omit this section to use the defaults (gift ideas, things to remember, places, watch & read,
+# recipes, someday). Easier to edit on the dashboard's Settings page.
+# collections:
+#   - key: gift_ideas
+#     label: Gift ideas
+#     list: "🎁 Gifts for {person}"
+#     description: Something a person says they want or would like as a gift — include the link.
+#     enabled: true
 
 alerts:
   discord_webhook_url: null               # or HA_DISCORD_WEBHOOK_URL

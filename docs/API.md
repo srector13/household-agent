@@ -70,9 +70,13 @@ edit queues `delete_item` for the old item before the `create_*` that replaces i
   "due_time": null,               // "HH:MM" local or null (date-only due)
   "alert": "2026-11-20T16:00:00-06:00",  // or null = no alarm
   "notes": "From Wife: \"Can you grab eggs tomorrow? We're out\"\n[ha:imessage:48213]",
-  "tag": "[ha:imessage:48213]"
+  "tag": "[ha:imessage:48213]",
+  "url": null                     // optional link, set as the item's URL (e.g. a gift idea's product page)
 }
 ```
+`list` may be any name, including emoji and a person's name (e.g. `"🎁 Gifts for Sarah"`); it is
+matched in canonical Unicode form (then case-insensitively) and created when missing if
+`create_list_if_missing` is true.
 
 `create_event`
 ```json
@@ -85,14 +89,41 @@ edit queues `delete_item` for the old item before the `create_*` that replaces i
   "location": null,
   "alert_minutes_before": 30,     // or null
   "notes": "From Wife: \"...\"\n[ha:imessage:48300]",
-  "tag": "[ha:imessage:48300]"
+  "tag": "[ha:imessage:48300]",
+  "url": null                     // optional
 }
 ```
 
+`update_item` (agent ≥ 0.3.0)
+```json
+{
+  "apple_item_id": "x-apple-..." | null,
+  "tag": "[ha:imessage:48213]",
+  "kind": "reminder" | "event",
+  "changes": {                    // only keys PRESENT are applied; explicit null clears the field
+    "title": "Pick up eggs",
+    "due": "2026-11-22" | null,   // reminders: with due_time → dueDateComponents (date-only if due_time null/absent); null removes the due date
+    "due_time": "HH:MM" | null,   // alone (no "due"): changes the time on the existing due day
+    "alert": "2026-11-22T16:00:00-06:00" | null,  // reminders: replaces all alarms with one absolute alarm; null removes all
+    "completed": true,            // reminders: isCompleted
+    "start": "ISO8601", "end": "ISO8601", "all_day": true,  // events; moving start without end keeps the length; relative alarms untouched
+    "location": "..." | null,
+    "url": "..." | null
+  },
+  "notes_append": "Updated from Me: \"I'll do it tomorrow\"" | null   // appended on a new line; [ha:] tag lines stay last
+}
+```
+Lookup: by `apple_item_id`; if null or not found, by `tag` (same search as idempotency). Not found →
+`failed` with error `"item not found"`. Malformed dates → `failed` before anything is changed.
+Success → `done` with the item's identifier.
+
 `delete_item`
 ```json
-{"apple_item_id": "x-apple-...", "kind": "reminder" | "event"}
+{"apple_item_id": "x-apple-..." | null, "kind": "reminder" | "event" | null, "tag": "[ha:imessage:48213]"}
 ```
+`tag` is optional. If `apple_item_id` is null or not found and a tag is given, the item with that tag is
+deleted (both kinds are searched when `kind` is null). The brain may send a null id with a tag when the
+create has not reported back yet — commands run in order, so the create has already executed.
 
 Idempotency: before `create_*`, search the target (all reminder lists / calendars ±1 year
 around `start` or `due`) for an item whose notes contain `tag`. If found, report it as

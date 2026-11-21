@@ -21,7 +21,7 @@ mac-agent (Swift, Mac)  ──HTTPS/Tailscale──▶  brain (FastAPI, Docker, 
 |---|---|
 | `brain/app/` | FastAPI app: `main.py` routes, `pipeline.py`, `gate.py`, `extract.py`, `planner.py`, `commands.py` (queue + SSE bus), `heartbeat.py` (watchdog + Discord), `mail.py` (IMAP IDLE), `backup.py`, `eval.py` |
 | `brain/app/prompts/extract.md` | The extraction prompt, versioned in its front matter (`extract-v1`), recorded on every event |
-| `brain/tests/` | Unit tests (fake LLM) + `fixtures/messages.jsonl`, the 40-case golden set |
+| `brain/tests/` | Unit tests (fake LLM) + `fixtures/messages.jsonl`, the 55-case golden set |
 | `mac-agent/` | Swift package: chat.db watcher, typedstream decoder, EventKit, outbox, launchd plist, install scripts. See [mac-agent/README.md](mac-agent/README.md) |
 | `config.example.yaml` | Copy to `config.yaml` (gitignored) |
 
@@ -75,7 +75,7 @@ troubleshooting. For lid-closed, always-on operation (phase 6), run
 ## Development
 
 ```sh
-make test          # brain: 74 tests, no network (fake LLM)
+make test          # brain: 89 tests, no network (fake LLM)
 make run           # brain locally on :8080 with ./config.yaml
 make agent-test    # mac-agent: swift test (also runs on Linux, minus EventKit)
 ```
@@ -95,6 +95,31 @@ make agent-test    # mac-agent: swift test (also runs on Linux, minus EventKit)
 It's built for the iPhone (bottom tab bar, add it to the home screen) and works in light and dark mode.
 Writes from other sites are blocked (same-origin check). Set `dashboard.password` if more people
 share your tailnet, since anyone who can open the dashboard can change settings.
+
+## Conversations, not just messages
+
+Each conversation keeps track of what the agent created from it, and the model sees those open
+items (numbered) with every new message. That lets later messages, including your own replies,
+change earlier items:
+
+| Message | What happens |
+|---|---|
+| Sarah: "Can you call the plumber?" | To-do **Call the plumber** (no date) |
+| You: "I'll do it tomorrow" | Same to-do gets tomorrow's date and a 4 PM alert |
+| Sarah: "Never mind about the eggs" | The earlier **Pick up eggs** is deleted |
+| You: "Got the milk" | **Pick up milk** is checked off |
+| Sarah: "Dentist moved to Wednesday at 10" | The existing dentist event moves (keeps its length) |
+| Sarah: "I'd love this for my birthday https://…" | **🎁 Gifts for Sarah** list gets the item with the link |
+
+Every item's notes start with who it's from and when, then a one-line summary and the original
+message. Your own messages are only read when that conversation has open items, and they can
+only change items, never create them (unless `allow_self_notes` is on). Each change is
+recorded in the item's history on the **Created items** page, and **Undo** reverses it:
+the old date comes back, a completed item is reopened, a cancelled one is re-created.
+
+**Collections** are lists for things that aren't to-dos: gift ideas, things to remember about
+someone, places to try, shows and books, recipes, someday ideas. You can add, rename or turn
+them off in Settings. The description you write is what tells the model what belongs there.
 
 ## How it behaves
 

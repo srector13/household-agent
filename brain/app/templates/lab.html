@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import cmd_card %}
 {% block title %}Test lab · Household Agent{% endblock %}
 {% block heading %}Test lab{% endblock %}
 {% block subheading %}<div class="sub">Dry run against the live model — nothing is stored or created</div>{% endblock %}
@@ -8,12 +9,15 @@
     <div class="card-b grid" style="gap:14px">
       <label class="f">Message<textarea name="text" rows="3" required placeholder="Can you grab eggs tomorrow?">{{ form.text or "" }}</textarea></label>
       <div class="chips" id="examples">
-        {% for ex in ["Can you grab eggs tomorrow? We're out", "Dentist moved to Tuesday at 3:30", "We need milk, bread and butter", "Never mind about the eggs", "Can you pick up Emma from school at 3:15 tomorrow?", "lol"] %}
+        {% for ex in ["Can you grab eggs tomorrow? We're out", "Dentist moved to Tuesday at 3:30", "Never mind about the eggs", "I'll do it tomorrow", "I'd love this for my birthday https://example.com/kindle", "We should try that new taco place on Main", "lol"] %}
         <button type="button" class="chip">{{ ex }}</button>{% endfor %}
       </div>
       <div class="fields">
-        <label class="f">From<input type="text" name="sender" value="{{ form.sender or (cfg.watch.imessage.allow[0].label if cfg.watch.imessage.allow else 'Wife') }}"></label>
+        <label class="f">Conversation with
+          <select name="who">{% for a in cfg.watch.imessage.allow %}<option value="{{ a.handle or a.chat_id }}" {{ "selected" if form.who == (a.handle or a.chat_id) }}>{{ a.label or a.handle or a.chat_id }}</option>{% endfor %}</select>
+          <span class="help">Uses this person's real open items, so you can test "never mind" and "I'll do it tomorrow".</span></label>
         <label class="f">Pretend "now" is<input type="datetime-local" name="now" value="{{ form.now or '' }}"><span class="help">blank = right now</span></label>
+        <div class="f full"><label class="switch"><input type="checkbox" name="from_me" value="true" {{ "checked" if form.from_me }}><span class="track"></span>I sent this message (a reply from me)</label></div>
         <label class="f full">Recent context<textarea name="context" rows="2" placeholder="Me: heading home soon">{{ form.context or "" }}</textarea><span class="help">one message per line, prefixed "Me:" or the sender's name</span></label>
       </div>
     </div>
@@ -22,21 +26,22 @@
 
   <div class="stack">
   {% if result %}
-    {% if result.gate %}<div class="notice warn">{{ icon("filter") }}<span class="body">The gate would skip this before the model sees it (<b>{{ result.gate|replace("_", " ") }}</b>). Shown below anyway.</span></div>{% endif %}
+    {% if result.gate and result.gate != "from_me" %}<div class="notice warn">{{ icon("filter") }}<span class="body">The gate would skip this before the model sees it (<b>{{ result.gate|replace("_", " ") }}</b>). Shown below anyway.</span></div>{% endif %}
     {% if result.error %}
       <div class="notice bad">{{ icon("alert") }}<span class="body">{{ result.error }}</span></div>
       {% if result.raw %}<pre>{{ result.raw }}</pre>{% endif %}
     {% else %}
       <div class="card">
-        <div class="card-h"><h2>Would create</h2><div class="right"><span class="badge b-muted plain">{{ result.ms }} ms</span>{% if result.review %}<span class="badge b-warn">needs review</span>{% endif %}</div></div>
+        <div class="card-h"><h2>Would do</h2><div class="right"><span class="badge b-muted plain">{{ result.ms }} ms</span>{% if result.review %}<span class="badge b-warn">needs review</span>{% endif %}</div></div>
         <div class="card-b grid" style="gap:8px">
-          {% for c in result.commands %}{% set p = c.payload %}
-          <div class="itemcard {{ 'ev' if c.op == 'create_event' }}"><span class="ic">{{ icon("calendar" if c.op == "create_event" else "check-square", 17) }}</span>
-            <div><div class="t">{{ p.title }}</div><div class="m">{% if c.op == "create_reminder" %}{{ p.list }}{% if p.due %} · due {{ p.due }}{% if p.due_time %} {{ p.due_time }}{% endif %}{% endif %}{% if p.alert %} · ⏰ {{ p.alert|localtime }}{% endif %}{% else %}{{ p.calendar }} · {% if p.all_day %}{{ p.start|localtime("%a %b %-d") }}, all day{% else %}{{ p.start|localtime }} – {{ p.end|localtime("%-I:%M %p") }}{% endif %}{% endif %}</div></div><span></span></div>
+          {% for c in result.commands %}{{ cmd_card(c) }}
           {% else %}<div class="muted">Nothing — {{ result.parsed.reasoning_brief }}</div>{% endfor %}
+          {% for sk in result.skipped or [] %}<div class="help">{{ icon("filter", 13) }} skipped: {{ sk }}</div>{% endfor %}
           {% if result.review %}<div class="help">{{ icon("alert", 13) }} {{ result.review|join("; ") }}</div>{% endif %}
         </div>
       </div>
+      <div class="card"><div class="card-h"><h2>Open items the model saw</h2><span class="badge b-muted plain">{{ result.open_items|length }}</span></div>
+        <div class="card-b">{% for it in result.open_items %}<div style="font-size:13.5px">{{ loop.index }}. {{ it.title }} <span class="faint">· {{ it.state.list or it.state.calendar }}{% if it.state.due %} · due {{ it.state.due }}{% endif %}</span></div>{% else %}<div class="muted" style="font-size:13.5px">None for this conversation.</div>{% endfor %}</div></div>
       <div class="card"><div class="card-h"><h2>Model output</h2></div><div class="card-b"><pre>{{ result.parsed|pretty }}</pre></div></div>
       <div class="card"><div class="card-h"><h2>Prompt</h2><div class="right faint" style="font-size:12.5px">what the model saw</div></div>
         <div class="card-b grid" style="gap:8px">{% for m in result.prompt %}<details><summary class="link">{{ m.role }}</summary><pre style="margin-top:6px">{{ m.content }}</pre></details>{% endfor %}

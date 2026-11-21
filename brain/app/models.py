@@ -76,6 +76,34 @@ CREATE TABLE IF NOT EXISTS alerts (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS items (
+    item_id TEXT PRIMARY KEY,
+    origin_event_id TEXT NOT NULL,
+    seq INTEGER NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL,              -- reminder | event
+    collection TEXT,                 -- null = a to-do / calendar event
+    chat_key TEXT,                   -- conversation it belongs to (handle, group chat id, or mail sender)
+    person TEXT,
+    title TEXT NOT NULL,
+    state TEXT NOT NULL,             -- current fields (list/calendar, due, alert, start, end, url, notes…)
+    tag TEXT NOT NULL,
+    apple_item_id TEXT,
+    status TEXT NOT NULL,            -- proposed | planned | active | completed | cancelled | undone | rejected | failed
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_items_chat ON items(chat_key, status);
+
+CREATE TABLE IF NOT EXISTS item_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id TEXT NOT NULL,
+    event_id TEXT,
+    action TEXT NOT NULL,            -- created | updated | completed | cancelled | undone | restored | failed …
+    detail TEXT,
+    at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_item_log_item ON item_log(item_id);
+
 CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -117,6 +145,19 @@ class DB:
             self.conn.execute("PRAGMA journal_mode=WAL")
             self.conn.execute("PRAGMA foreign_keys=ON")
             self.conn.executescript(SCHEMA)
+            self._migrate()
+
+    def _migrate(self) -> None:
+        ecols = {r[1] for r in self.conn.execute("PRAGMA table_info(events)")}
+        if "open_refs" not in ecols:
+            self.conn.execute("ALTER TABLE events ADD COLUMN open_refs TEXT")
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(commands)")}
+        for col, ddl in (("item_id", "TEXT"), ("purpose", "TEXT NOT NULL DEFAULT 'create'"), ("meta", "TEXT")):
+            if col not in cols:
+                self.conn.execute(f"ALTER TABLE commands ADD COLUMN {col} {ddl}")
+        if "purpose" not in cols:
+            # v0.2 rows: delete_item was only ever used for undo / start-over.
+            self.conn.execute("UPDATE commands SET purpose='undo' WHERE undo_of IS NOT NULL")
 
     # ---- low level -------------------------------------------------------
     def execute(self, sql: str, params: tuple | dict = ()) -> sqlite3.Cursor:
@@ -193,13 +234,16 @@ class DB:
     # ---- commands ------------------------------------------------------------
     def insert_command(
         self, event_id: str, op: str, payload: dict, status: str, seq: int = 0,
-        undo_of: str | None = None, generation: int = 0,
+        undo_of: str | None = None, generation: int = 0, item_id: str | None = None,
+        purpose: str = "create", meta: dict | None = None,
     ) -> str:
         cid = new_command_id()
         self.execute(
-            """INSERT INTO commands (command_id, event_id, seq, generation, op, payload, status, undo_of, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-            (cid, event_id, seq, generation, op, json.dumps(payload), status, undo_of, utcnow()),
+            """INSERT INTO commands (command_id, event_id, seq, generation, op, payload, status, undo_of, created_at,
+                                     item_id, purpose, meta)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (cid, event_id, seq, generation, op, json.dumps(payload), status, undo_of, utcnow(),
+             item_id, purpose, json.dumps(meta) if meta is not None else None),
         )
         return cid
 
@@ -207,12 +251,14 @@ class DB:
         row = self.one("SELECT * FROM commands WHERE command_id=?", (command_id,))
         if row:
             row["payload"] = json.loads(row["payload"])
+            row["meta"] = json.loads(row["meta"]) if row.get("meta") else None
         return row
 
     def commands_for_event(self, event_id: str) -> list[dict[str, Any]]:
         rows = self.all("SELECT * FROM commands WHERE event_id=? ORDER BY rowid", (event_id,))
         for r in rows:
             r["payload"] = json.loads(r["payload"])
+            r["meta"] = json.loads(r["meta"]) if r.get("meta") else None
         return rows
 
     def update_command(self, command_id: str, **fields: Any) -> None:

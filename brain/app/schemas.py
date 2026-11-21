@@ -20,21 +20,29 @@ class Event(BaseModel):
     subject: str | None = None  # mail only
 
 
-ActionType = Literal["create_reminder", "create_event"]
+ActionType = Literal["create_reminder", "create_event", "save_to_collection",
+                     "update_item", "complete_item", "cancel_item"]
+CREATE_TYPES = ("create_reminder", "create_event", "save_to_collection")
+ITEM_TYPES = ("update_item", "complete_item", "cancel_item")
 
 
 class Action(BaseModel):
     type: ActionType
-    title: str
-    list: str | None = None  # ignored: every reminder goes to rules.reminder_list
-    due_date: str | None = None  # YYYY-MM-DD
-    due_time: str | None = None  # HH:MM (24h, local)
-    start: str | None = None  # YYYY-MM-DDTHH:MM (local) or YYYY-MM-DD when all_day
+    ref: int | None = None          # open item number, for update/complete/cancel
+    collection: str | None = None   # for save_to_collection
+    person: str | None = None       # who a saved note is about (default: the sender)
+    title: str = ""
+    list: str | None = None         # ignored: to-dos go to rules.reminder_list
+    due_date: str | None = None     # YYYY-MM-DD
+    due_time: str | None = None     # HH:MM (24h, local)
+    start: str | None = None        # YYYY-MM-DDTHH:MM (local) or YYYY-MM-DD when all_day
     end: str | None = None
     all_day: bool = False
     location: str | None = None
     calendar: str | None = None
+    url: str | None = None
     notes: str | None = None
+    summary: str | None = None      # one-line context summary, goes in the item's notes
     source_quote: str = ""
 
 
@@ -49,6 +57,9 @@ def _nullable(t: str, **extra: Any) -> dict[str, Any]:
     return {"type": [t, "null"], **extra}
 
 
+ACTION_FIELDS = ["type", "ref", "collection", "person", "title", "due_date", "due_time", "start", "end",
+                 "all_day", "location", "url", "notes", "summary", "source_quote"]
+
 # Flat schema, every field required (nullable where optional) — best for constrained decoding.
 EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -62,12 +73,12 @@ EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": [
-                    "type", "title", "due_date", "due_time", "start", "end",
-                    "all_day", "location", "calendar", "notes", "source_quote",
-                ],
+                "required": ACTION_FIELDS,
                 "properties": {
-                    "type": {"type": "string", "enum": ["create_reminder", "create_event"]},
+                    "type": {"type": "string", "enum": list(ActionType.__args__)},
+                    "ref": _nullable("integer", description="open item number for update/complete/cancel"),
+                    "collection": _nullable("string", description="collection key for save_to_collection"),
+                    "person": _nullable("string"),
                     "title": {"type": "string"},
                     "due_date": _nullable("string", description="YYYY-MM-DD"),
                     "due_time": _nullable("string", description="HH:MM 24h local"),
@@ -75,8 +86,9 @@ EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
                     "end": _nullable("string", description="YYYY-MM-DDTHH:MM local, or YYYY-MM-DD if all_day"),
                     "all_day": {"type": "boolean"},
                     "location": _nullable("string"),
-                    "calendar": _nullable("string"),
+                    "url": _nullable("string"),
                     "notes": _nullable("string"),
+                    "summary": _nullable("string"),
                     "source_quote": {"type": "string"},
                 },
             },
@@ -106,5 +118,9 @@ class CommandResult(BaseModel):
 
 
 class PlannedCommand(BaseModel):
-    op: Literal["create_reminder", "create_event", "delete_item"]
+    op: Literal["create_reminder", "create_event", "update_item", "delete_item"]
     payload: dict[str, Any]
+    purpose: Literal["create", "update", "complete", "cancel"] = "create"
+    item_id: str | None = None                 # existing item this acts on
+    new_item: dict[str, Any] | None = None     # registry row to create (for creates)
+    meta: dict[str, Any] | None = None         # brain-only: previous values (for undo), collection…

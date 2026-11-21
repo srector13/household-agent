@@ -1,24 +1,60 @@
 {% extends "base.html" %}
 {% block title %}Created items · Household Agent{% endblock %}
 {% block heading %}Created items{% endblock %}
-{% block subheading %}<div class="sub">Everything the agent has put in Reminders and Calendar (and not undone)</div>{% endblock %}
-{% block content %}
-<div class="grid g-main">
-  <div class="card">
-    <div class="card-h"><h2>All items</h2><span class="badge b-muted plain">{{ items|length }}</span></div>
-    <div class="card-b flush list">
-      {% for c in items %}{% set p = c.payload %}
-      <div class="erow" style="grid-template-columns:36px minmax(0,1fr) auto">
-        <span class="avatar" style="background:{{ 'var(--info-soft)' if c.op == 'create_event' else 'var(--ok-soft)' }};color:{{ 'var(--info)' if c.op == 'create_event' else 'var(--ok)' }}">{{ icon("calendar" if c.op == "create_event" else "check-square", 17) }}</span>
-        <a href="/events/{{ c.event_id|urlencode }}" style="min-width:0">
-          <div class="top"><span class="who">{{ p.title }}</span></div>
-          <div class="when">{% if c.op == "create_reminder" %}{{ p.list }}{% if p.due %} · due {{ p.due }}{% if p.due_time %} {{ p.due_time }}{% endif %}{% endif %}{% else %}{{ p.calendar }} · {% if p.all_day %}{{ p.start|localtime("%a %b %-d") }}{% else %}{{ p.start|localtime }}{% endif %}{% endif %}
-            · from {{ c.sender_label or "?" }} · <span data-ago="{{ c.completed_at }}"></span></div>
-        </a>
-        <button class="btn sm ghost danger" title="Remove from Reminders/Calendar" data-id="{{ c.event_id }}" onclick="HA.action(this, 'undo', this.dataset.id, {confirm: 'Remove the items created from this message?', done: 'Removing from your Mac…', onDone: () => this.closest('.erow').classList.add('gone')})">{{ icon("undo", 15) }}<span>Undo</span></button>
-      </div>
-      {% else %}<div class="empty">{{ icon("check-square", 32) }}<div>Nothing created yet.</div></div>{% endfor %}
+{% block subheading %}<div class="sub">Everything the agent put in Reminders and Calendar — and how later messages changed it</div>{% endblock %}
+
+{% macro item_row(it) %}{% set st = it.state %}
+<div class="erow" style="grid-template-columns:36px minmax(0,1fr) auto">
+  {% set ev = it.kind == "event" %}
+  <span class="avatar" style="background:{{ 'var(--info-soft)' if ev else 'color-mix(in srgb, var(--accent-2) 16%, transparent)' if it.collection else 'var(--ok-soft)' }};color:{{ 'var(--info)' if ev else 'var(--accent-2)' if it.collection else 'var(--ok)' }}">{{ icon("calendar" if ev else "gift" if it.collection == "gift_ideas" else "bookmark" if it.collection else "check-square", 17) }}</span>
+  <div style="min-width:0">
+    <div class="top"><span class="who" style="{{ 'text-decoration:line-through;opacity:.7' if it.status in ('cancelled','undone','rejected') }}">{{ it.title }}</span></div>
+    <div class="when">
+      {% if ev %}{{ st.calendar }} · {% if st.all_day %}{{ st.start|localtime("%a %b %-d") }}{% else %}{{ st.start|localtime }}{% endif %}{% if st.location %} · {{ st.location }}{% endif %}
+      {% else %}{{ st.list }}{% if st.due %} · due {{ st.due }}{% if st.due_time %} {{ st.due_time }}{% endif %}{% endif %}{% endif %}
+      · {{ it.person or "?" }}
+      {% if st.url %} · <a class="link" href="{{ st.url }}" target="_blank" rel="noopener">{{ icon("link", 12) }} link</a>{% endif %}
     </div>
+    {% if it.origin %}<div class="muted" style="font-size:12.5px;margin-top:3px">{{ "You" if it.origin.is_from_me else it.origin.sender_label }}: “{{ it.origin.text[:140] }}{{ "…" if it.origin.text|length > 140 }}”</div>{% endif %}
+    {% if it.log|length > 1 %}
+    <details class="hist"><summary class="link" style="font-size:12px">History ({{ it.log|length }})</summary>
+      {% for h in it.log %}<div><span data-ago="{{ h.at }}"></span><b>{{ h.action }}</b>{% if h.detail and h.detail.changes %}<span>{{ h.detail.changes|tojson }}</span>{% endif %}{% if h.event_id %}<a class="link" href="/events/{{ h.event_id|urlencode }}">message</a>{% endif %}</div>{% endfor %}
+    </details>{% endif %}
+  </div>
+  <div style="display:grid;gap:6px;justify-items:end">
+    <span class="badge b-{{ {'active':'ok','planned':'info','proposed':'warn','completed':'muted','failed':'bad'}.get(it.status, 'muted') }}">{{ {'active':'on Mac','planned':'sending','proposed':'in review'}.get(it.status, it.status) }}</span>
+    <a class="btn sm ghost" href="/events/{{ it.origin_event_id|urlencode }}">Open</a>
+  </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<nav class="tabs">
+  <a href="/items?tab=todos" class="{{ 'on' if tab == 'todos' }}">{{ icon("check-square", 15) }}To-dos & events <span class="n">{{ counts.todos }}</span></a>
+  <a href="/items?tab=collections" class="{{ 'on' if tab == 'collections' }}">{{ icon("bookmark", 15) }}Collections <span class="n">{{ counts.collections }}</span></a>
+  <a href="/items?tab=history" class="{{ 'on' if tab == 'history' }}">{{ icon("clock", 15) }}Done & cancelled <span class="n">{{ counts.history }}</span></a>
+</nav>
+{% if tab == "collections" %}
+<div class="stack" style="margin-top:12px">
+  {% for key, lists in groups.items() %}
+  <div class="card">
+    <div class="card-h"><h2>{{ icon("gift" if key == "gift_ideas" else "bookmark", 16) }} {{ collection_label(key) }}</h2></div>
+    <div class="card-b flush">
+      {% for list_name, its in lists.items() %}
+      <div class="colgroup"><h3>{{ list_name }} <span class="badge b-muted plain">{{ its|length }}</span></h3>
+        <div class="list">{% for it in its %}{{ item_row(it) }}{% endfor %}</div></div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="card empty">{{ icon("gift", 36) }}<div style="font-weight:600;color:var(--text)">No saved notes yet</div>
+    <div>When someone mentions a gift idea, a place to try or a show to watch, it lands here — and in its own Reminders list. Configure collections in <a class="link" href="/settings#collections">Settings</a>.</div></div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="grid g-main" style="margin-top:12px">
+  <div class="card list">
+    {% for it in rows %}{{ item_row(it) }}{% else %}<div class="empty">{{ icon("check-square", 32) }}<div>{{ "Nothing here yet." if tab == "todos" else "Nothing finished or cancelled yet." }}</div></div>{% endfor %}
   </div>
   <div class="card">
     <div class="card-h"><h2>Next 14 days</h2></div>
@@ -32,4 +68,5 @@
     </div>
   </div>
 </div>
+{% endif %}
 {% endblock %}

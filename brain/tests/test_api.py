@@ -31,7 +31,7 @@ def test_eggs_end_to_end(client, llm):
     assert p["title"] == "Pick up eggs" and p["list"] == "Household" and p["due"] == tomorrow()
     assert p["alert"].startswith(f"{tomorrow()}T16:00:00")
     assert p["tag"] == "[ha:imessage:1]" and p["notes"].endswith("[ha:imessage:1]")
-    assert p["notes"].startswith('From Wife: "Can you grab eggs tomorrow?')
+    assert p["notes"].startswith("👤 Wife · ") and "Wife: “Can you grab eggs tomorrow?" in p["notes"]
 
     # leased: not redelivered immediately
     assert client.get("/api/agent/commands?wait=0", headers=AUTH).json()["commands"] == []
@@ -46,13 +46,14 @@ def test_eggs_end_to_end(client, llm):
         assert s in steps
     extract_step = next(t for t in ev["trace"] if t["step"] == "extract")
     assert extract_step["data"]["prompt"][0]["role"] == "system"
-    assert ev["event"]["prompt_version"] == "extract-v2"
+    assert ev["event"]["prompt_version"] == "extract-v3"
 
     # Undo → delete_item queued → done → undone
     r = client.post("/actions/undo/imessage:1", follow_redirects=False)
     assert r.status_code == 303
     cmds = client.get("/api/agent/commands?wait=0", headers=AUTH).json()["commands"]
-    assert cmds[0]["op"] == "delete_item" and cmds[0]["payload"] == {"apple_item_id": "APPLE-1", "kind": "reminder"}
+    assert cmds[0]["op"] == "delete_item"
+    assert cmds[0]["payload"] == {"apple_item_id": "APPLE-1", "kind": "reminder", "tag": "[ha:imessage:1]"}
     client.post(f"/api/agent/commands/{cmds[0]['command_id']}/result", headers=AUTH, json={"status": "done"})
     assert client.get("/api/events/imessage:1").json()["event"]["status"] == "undone"
 

@@ -72,39 +72,42 @@ def latency(db: DB, hours: float = 24 * 7) -> dict[str, int | None]:
             "n": len(lat)}
 
 
-def live_items(db: DB) -> list[dict[str, Any]]:
-    """Items the agent created that have not been undone (newest first)."""
-    rows = db.all("""
-        SELECT c.*, e.sender_label, e.text FROM commands c JOIN events e ON e.event_id = c.event_id
-        WHERE c.op IN ('create_reminder','create_event') AND c.status='done' AND c.generation = e.generation
-          AND NOT EXISTS (SELECT 1 FROM commands d WHERE d.undo_of = c.command_id AND d.status IN ('done','pending','sent'))
-        ORDER BY c.rowid DESC LIMIT 300""")
-    for r in rows:
-        r["payload"] = json.loads(r["payload"])
-    return rows
-
-
 def upcoming(db: DB, cfg: Config, days: int = 7) -> list[dict[str, Any]]:
+    """Dated to-dos and events from the item registry in the next `days` days."""
     today = datetime.now(cfg.tz).date()
     horizon = today + timedelta(days=days)
     out = []
-    for c in live_items(db):
-        p = c["payload"]
-        if c["op"] == "create_reminder":
-            if not p.get("due"):
+    for it in db.all("SELECT * FROM items WHERE status IN ('planned','active') AND collection IS NULL"):
+        st = json.loads(it["state"])
+        if it["kind"] == "reminder":
+            if not st.get("due"):
                 continue
-            when = datetime.combine(date.fromisoformat(p["due"]),
-                                    time.fromisoformat(p["due_time"]) if p.get("due_time") else time(23, 59), cfg.tz)
-            all_day = not p.get("due_time")
+            when = datetime.combine(date.fromisoformat(st["due"]),
+                                    time.fromisoformat(st["due_time"]) if st.get("due_time") else time(23, 59), cfg.tz)
+            all_day = not st.get("due_time")
         else:
-            when = datetime.fromisoformat(p["start"]).astimezone(cfg.tz)
-            all_day = p.get("all_day", False)
+            if not st.get("start"):
+                continue
+            when = datetime.fromisoformat(st["start"]).astimezone(cfg.tz)
+            all_day = st.get("all_day", False)
         if today <= when.date() <= horizon:
-            out.append({"kind": "reminder" if c["op"] == "create_reminder" else "event", "title": p["title"],
-                        "when": when, "all_day": all_day, "event_id": c["event_id"],
-                        "where": p.get("list") or p.get("calendar"), "who": c["sender_label"]})
+            out.append({"kind": it["kind"], "title": it["title"], "when": when, "all_day": all_day,
+                        "event_id": it["origin_event_id"], "where": st.get("list") or st.get("calendar"),
+                        "who": it["person"], "item_id": it["item_id"]})
     out.sort(key=lambda x: x["when"])
     return out
+
+
+def item_cards(db: DB, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Attach history + origin message to registry rows for the Items page."""
+    for it in rows:
+        it["log"] = db.all("SELECT * FROM item_log WHERE item_id=? ORDER BY id", (it["item_id"],))
+        for entry in it["log"]:
+            entry["detail"] = json.loads(entry["detail"]) if entry["detail"] else None
+        ev = db.one("SELECT text, sender_label, received_at, is_from_me FROM events WHERE event_id=?",
+                    (it["origin_event_id"],))
+        it["origin"] = ev
+    return rows
 
 
 def open_commands(db: DB) -> list[dict[str, Any]]:

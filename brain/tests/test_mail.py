@@ -123,7 +123,8 @@ def test_mail_event_through_pipeline(client, llm):
     prompt = ev["trace"][3]["data"]["prompt"][1]["content"]
     assert "Subject: Early dismissal Wednesday" in prompt
     notes = ev["commands"][0]["payload"]["notes"]
-    assert notes.startswith("From School (email “Early dismissal Wednesday”)")
+    assert notes.startswith("👤 School · ") and "· email" in notes.splitlines()[0]
+    assert "“Early dismissal Wednesday”" in notes
     # non-allowlisted sender ignored
     body2 = {**body, "event_id": "mail:other", "sender_handle": "x@evil.com"}
     assert client.post("/api/events", json=body2, headers=AUTH).json()["status"] == "ignored"

@@ -67,9 +67,12 @@ public struct ReminderPayload: Codable, Equatable, Sendable {
     public var alert: String?
     public var notes: String?
     public var tag: String?
+    /// Optional link (e.g. a gift idea's product page); set as the reminder's URL.
+    public var url: String?
 
     public init(title: String, list: String? = nil, createListIfMissing: Bool? = true, due: String? = nil,
-                dueTime: String? = nil, alert: String? = nil, notes: String? = nil, tag: String? = nil) {
+                dueTime: String? = nil, alert: String? = nil, notes: String? = nil, tag: String? = nil,
+                url: String? = nil) {
         self.title = title
         self.list = list
         self.createListIfMissing = createListIfMissing
@@ -78,6 +81,7 @@ public struct ReminderPayload: Codable, Equatable, Sendable {
         self.alert = alert
         self.notes = notes
         self.tag = tag
+        self.url = url
     }
 }
 
@@ -91,9 +95,12 @@ public struct EventPayload: Codable, Equatable, Sendable {
     public var alertMinutesBefore: Int?
     public var notes: String?
     public var tag: String?
+    public var url: String?
 
     public init(title: String, calendar: String? = nil, start: String, end: String? = nil, allDay: Bool? = false,
-                location: String? = nil, alertMinutesBefore: Int? = nil, notes: String? = nil, tag: String? = nil) {
+                location: String? = nil, alertMinutesBefore: Int? = nil, notes: String? = nil, tag: String? = nil,
+                url: String? = nil) {
+        self.url = url
         self.title = title
         self.calendar = calendar
         self.start = start
@@ -107,12 +114,141 @@ public struct EventPayload: Codable, Equatable, Sendable {
 }
 
 public struct DeletePayload: Codable, Equatable, Sendable {
-    public var appleItemId: String
+    /// May be null when the brain queued the delete before the create reported back; then `tag` is used.
+    public var appleItemId: String?
     public var kind: ItemKind?
+    public var tag: String?
 
-    public init(appleItemId: String, kind: ItemKind?) {
+    public init(appleItemId: String?, kind: ItemKind?, tag: String? = nil) {
         self.appleItemId = appleItemId
         self.kind = kind
+        self.tag = tag
+    }
+}
+
+/// A field in an `update_item` change set: absent (keep), explicit null (clear), or a new value.
+public enum Patch<Value: Equatable & Sendable>: Equatable, Sendable {
+    case keep
+    case clear
+    case set(Value)
+
+    public var value: Value? {
+        if case .set(let v) = self { return v }
+        return nil
+    }
+
+    public var isKeep: Bool { self == .keep }
+}
+
+extension KeyedDecodingContainer {
+    func decodePatch<T: Decodable & Equatable & Sendable>(_ type: T.Type, forKey key: Key) throws -> Patch<T> {
+        guard contains(key) else { return .keep }
+        if try decodeNil(forKey: key) { return .clear }
+        return .set(try decode(T.self, forKey: key))
+    }
+}
+
+/// `changes` of an update_item command. Only keys present in the JSON are applied.
+public struct ItemChanges: Decodable, Equatable, Sendable {
+    public var title: Patch<String> = .keep
+    public var due: Patch<String> = .keep
+    public var dueTime: Patch<String> = .keep
+    public var alert: Patch<String> = .keep
+    public var start: Patch<String> = .keep
+    public var end: Patch<String> = .keep
+    public var allDay: Patch<Bool> = .keep
+    public var location: Patch<String> = .keep
+    public var url: Patch<String> = .keep
+    public var completed: Patch<Bool> = .keep
+
+    enum CodingKeys: String, CodingKey {
+        case title, due, dueTime, alert, start, end, allDay, location, url, completed
+    }
+
+    public init(title: Patch<String> = .keep, due: Patch<String> = .keep, dueTime: Patch<String> = .keep,
+                alert: Patch<String> = .keep, start: Patch<String> = .keep, end: Patch<String> = .keep,
+                allDay: Patch<Bool> = .keep, location: Patch<String> = .keep, url: Patch<String> = .keep,
+                completed: Patch<Bool> = .keep) {
+        self.title = title
+        self.due = due
+        self.dueTime = dueTime
+        self.alert = alert
+        self.start = start
+        self.end = end
+        self.allDay = allDay
+        self.location = location
+        self.url = url
+        self.completed = completed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title = try c.decodePatch(String.self, forKey: .title)
+        due = try c.decodePatch(String.self, forKey: .due)
+        dueTime = try c.decodePatch(String.self, forKey: .dueTime)
+        alert = try c.decodePatch(String.self, forKey: .alert)
+        start = try c.decodePatch(String.self, forKey: .start)
+        end = try c.decodePatch(String.self, forKey: .end)
+        allDay = try c.decodePatch(Bool.self, forKey: .allDay)
+        location = try c.decodePatch(String.self, forKey: .location)
+        url = try c.decodePatch(String.self, forKey: .url)
+        completed = try c.decodePatch(Bool.self, forKey: .completed)
+    }
+}
+
+public struct UpdatePayload: Decodable, Equatable, Sendable {
+    public var appleItemId: String?
+    public var tag: String?
+    public var kind: ItemKind
+    public var changes: ItemChanges
+    public var notesAppend: String?
+
+    public init(appleItemId: String?, tag: String?, kind: ItemKind, changes: ItemChanges, notesAppend: String? = nil) {
+        self.appleItemId = appleItemId
+        self.tag = tag
+        self.kind = kind
+        self.changes = changes
+        self.notesAppend = notesAppend
+    }
+
+    enum CodingKeys: String, CodingKey { case appleItemId, tag, kind, changes, notesAppend }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        appleItemId = try c.decodeIfPresent(String.self, forKey: .appleItemId)
+        tag = try c.decodeIfPresent(String.self, forKey: .tag)
+        kind = try c.decode(ItemKind.self, forKey: .kind)
+        changes = try c.decodeIfPresent(ItemChanges.self, forKey: .changes) ?? ItemChanges()
+        notesAppend = try c.decodeIfPresent(String.self, forKey: .notesAppend)
+    }
+}
+
+/// Notes helpers shared by EventKit and the test store.
+public enum NotesEditor {
+    /// True for an agent idempotency tag line such as "[ha:imessage:48213]" or "[ha:mail:x#1]".
+    public static func isTagLine(_ line: String) -> Bool {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        return t.hasPrefix("[ha:") && t.hasSuffix("]")
+    }
+
+    /// Appends `line` on a new line, keeping any trailing [ha:…] tag lines last.
+    public static func append(_ line: String, to notes: String?) -> String {
+        let addition = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !addition.isEmpty else { return notes ?? "" }
+        guard let notes, !notes.isEmpty else { return addition }
+        var lines = notes.components(separatedBy: "\n")
+        var tags: [String] = []
+        while let last = lines.last {
+            if isTagLine(last) {
+                tags.insert(lines.removeLast(), at: 0)
+            } else if last.trimmingCharacters(in: .whitespaces).isEmpty {
+                lines.removeLast()
+            } else {
+                break
+            }
+        }
+        lines.append(addition)
+        return (lines + tags).joined(separator: "\n")
     }
 }
 
@@ -120,6 +256,7 @@ public enum CommandPayload: Equatable, Sendable {
     case createReminder(ReminderPayload)
     case createEvent(EventPayload)
     case deleteItem(DeletePayload)
+    case updateItem(UpdatePayload)
     /// Unknown op or a payload that failed to decode; reported back as `failed`.
     case unsupported(op: String, reason: String)
 }
@@ -155,6 +292,8 @@ public struct AgentCommand: Decodable, Equatable, Sendable {
                 payload = .createEvent(try c.decode(EventPayload.self, forKey: .payload))
             case "delete_item":
                 payload = .deleteItem(try c.decode(DeletePayload.self, forKey: .payload))
+            case "update_item":
+                payload = .updateItem(try c.decode(UpdatePayload.self, forKey: .payload))
             default:
                 payload = .unsupported(op: op, reason: "unsupported op '\(op)'")
             }

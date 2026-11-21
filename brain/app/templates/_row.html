@@ -1,8 +1,8 @@
 {% from "_macros.html" import initials, status_badge, action_pills %}
 <a class="erow" data-event="{{ e.event_id }}" href="/events/{{ e.event_id|urlencode }}">
-  <span class="avatar {{ 'mail' if e.source == 'mail' }}">{% if e.source == "mail" %}{{ icon("mail", 16) }}{% else %}{{ initials(e.sender_label or e.sender_handle) }}{% endif %}</span>
+  <span class="avatar {{ 'mail' if e.source == 'mail' }} {{ 'me' if e.is_from_me }}">{% if e.source == "mail" %}{{ icon("mail", 16) }}{% elif e.is_from_me %}{{ icon("reply", 16) }}{% else %}{{ initials(e.sender_label or e.sender_handle) }}{% endif %}</span>
   <div style="min-width:0">
-    <div class="top"><span class="who">{{ e.sender_label or e.sender_handle or "?" }}</span><span class="when" data-ago="{{ e.received_at }}" title="{{ e.received_at|localtime }}">{{ e.received_at|localtime }}</span></div>
+    <div class="top"><span class="who">{% if e.is_from_me %}You → {% endif %}{{ e.sender_label or e.sender_handle or "?" }}</span><span class="when" data-ago="{{ e.received_at }}" title="{{ e.received_at|localtime }}">{{ e.received_at|localtime }}</span></div>
     <div class="text">{% if e.subject %}<b>{{ e.subject }}</b> — {% endif %}{{ e.text }}</div>
     {{ action_pills(e) }}
     {% if e.reason and e.status not in ("done", "queued") %}<div class="reason">{{ e.reason|replace("_", " ") }}</div>{% endif %}

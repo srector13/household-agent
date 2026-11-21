@@ -81,14 +81,17 @@ public actor EventKitService: ItemStore {
             }
             return def
         }
+        // Names may contain emoji and people's names ("🎁 Gifts for Sarah"): compare in canonical
+        // Unicode form, ignoring surrounding whitespace, then case-insensitively.
+        let wanted = Self.canonical(name)
         let lists = store.calendars(for: .reminder)
-        if let match = lists.first(where: { $0.title == name })
-            ?? lists.first(where: { $0.title.caseInsensitiveCompare(name) == .orderedSame }) {
+        if let match = lists.first(where: { Self.canonical($0.title) == wanted })
+            ?? lists.first(where: { Self.canonical($0.title).caseInsensitiveCompare(wanted) == .orderedSame }) {
             return match
         }
         guard createIfMissing else { throw ItemStoreError("Reminders list '\(name)' not found") }
         let cal = EKCalendar(for: .reminder, eventStore: store)
-        cal.title = name
+        cal.title = wanted
         guard let source = store.defaultCalendarForNewReminders()?.source
             ?? store.sources.first(where: { $0.sourceType == .calDAV })
             ?? store.sources.first(where: { $0.sourceType == .local }) else {
@@ -96,8 +99,17 @@ public actor EventKitService: ItemStore {
         }
         cal.source = source
         try store.saveCalendar(cal, commit: true)
-        Log.info("created Reminders list '\(name)' in source '\(source.title)'")
+        Log.info("created Reminders list '\(wanted)' in source '\(source.title)'")
         return cal
+    }
+
+    static func canonical(_ s: String) -> String {
+        s.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
+    }
+
+    private static func link(_ s: String?) -> URL? {
+        guard let s = s?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+        return URL(string: s)
     }
 
     public func createReminder(_ p: ReminderPayload) async throws -> String {
@@ -106,6 +118,7 @@ public actor EventKitService: ItemStore {
         reminder.title = p.title
         reminder.notes = p.notes
         reminder.calendar = try reminderList(named: p.list, createIfMissing: p.createListIfMissing ?? true)
+        if let url = Self.link(p.url) { reminder.url = url }
         if let due = p.due {
             guard let comps = AppleDate.dueComponents(date: due, time: p.dueTime, timeZone: timeZone) else {
                 throw ItemStoreError("invalid due '\(due)' / '\(p.dueTime ?? "")'")
@@ -144,6 +157,7 @@ public actor EventKitService: ItemStore {
         event.notes = p.notes
         event.location = p.location
         event.calendar = try eventCalendar(named: p.calendar)
+        if let url = Self.link(p.url) { event.url = url }
         if p.allDay == true {
             // All-day: local date parts only; `end` is inclusive.
             let startDay = AppleDate.startOfDay(start, timeZone: timeZone)
@@ -178,6 +192,102 @@ public actor EventKitService: ItemStore {
             return true
         }
         throw ItemStoreError("item \(id) has unexpected type")
+    }
+
+    // MARK: Update
+
+    public func updateItem(id: String, kind: ItemKind, changes ch: ItemChanges, notesAppend: String?) async throws -> Bool {
+        guard let item = store.calendarItem(withIdentifier: id) else { return false }
+        if let title = ch.title.value { item.title = title }
+        switch ch.location {
+        case .set(let v): item.location = v
+        case .clear: item.location = nil
+        case .keep: break
+        }
+        switch ch.url {
+        case .set(let v): item.url = Self.link(v)
+        case .clear: item.url = nil
+        case .keep: break
+        }
+        if let note = notesAppend { item.notes = NotesEditor.append(note, to: item.notes) }
+
+        if let reminder = item as? EKReminder {
+            try applyReminderChanges(reminder, ch)
+            try store.save(reminder, commit: true)
+            return true
+        }
+        if let event = item as? EKEvent {
+            try applyEventChanges(event, ch)
+            try store.save(event, span: .thisEvent, commit: true)
+            return true
+        }
+        throw ItemStoreError("item \(id) has unexpected type")
+    }
+
+    private func applyReminderChanges(_ r: EKReminder, _ ch: ItemChanges) throws {
+        switch ch.due {
+        case .clear:
+            r.dueDateComponents = nil
+        case .set(let due):
+            guard let comps = AppleDate.dueComponents(date: due, time: ch.dueTime.value, timeZone: timeZone) else {
+                throw ItemStoreError("invalid due '\(due)'")
+            }
+            r.dueDateComponents = comps
+        case .keep:
+            // Only the time changed: keep the existing day.
+            if !ch.dueTime.isKeep, let existing = r.dueDateComponents,
+               let y = existing.year, let m = existing.month, let d = existing.day {
+                let day = String(format: "%04d-%02d-%02d", y, m, d)
+                guard let comps = AppleDate.dueComponents(date: day, time: ch.dueTime.value, timeZone: timeZone) else {
+                    throw ItemStoreError("invalid due_time '\(ch.dueTime.value ?? "")'")
+                }
+                r.dueDateComponents = comps
+            }
+        }
+        switch ch.alert {
+        case .clear:
+            r.alarms?.forEach { r.removeAlarm($0) }
+        case .set(let iso):
+            guard let when = AppleDate.parseISO8601(iso) else { throw ItemStoreError("invalid alert '\(iso)'") }
+            r.alarms?.forEach { r.removeAlarm($0) }
+            r.addAlarm(EKAlarm(absoluteDate: when))
+        case .keep:
+            break
+        }
+        if let done = ch.completed.value { r.isCompleted = done }
+    }
+
+    private func applyEventChanges(_ e: EKEvent, _ ch: ItemChanges) throws {
+        guard !(ch.start.isKeep && ch.end.isKeep && ch.allDay.isKeep) else { return }
+        let oldStart = e.startDate ?? Date()
+        let oldEnd = e.endDate ?? oldStart.addingTimeInterval(3600)
+        var start = oldStart
+        if let s = ch.start.value {
+            guard let d = AppleDate.parseISO8601(s) else { throw ItemStoreError("invalid start '\(s)'") }
+            start = d
+        }
+        var end: Date
+        if let s = ch.end.value {
+            guard let d = AppleDate.parseISO8601(s) else { throw ItemStoreError("invalid end '\(s)'") }
+            end = d
+        } else {
+            // Moving the start without a new end keeps the event's length.
+            end = start.addingTimeInterval(max(oldEnd.timeIntervalSince(oldStart), 0))
+        }
+        let allDay = ch.allDay.value ?? e.isAllDay
+        if allDay {
+            let startDay = AppleDate.startOfDay(start, timeZone: timeZone)
+            let endDay = AppleDate.startOfDay(end, timeZone: timeZone)
+            e.isAllDay = true
+            e.startDate = startDay
+            e.endDate = max(endDay, startDay)
+        } else {
+            e.isAllDay = false
+            e.timeZone = timeZone
+            if end <= start { end = start.addingTimeInterval(3600) }
+            e.startDate = start
+            e.endDate = end
+        }
     }
 }
 #endif
