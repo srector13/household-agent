@@ -109,7 +109,7 @@ change earlier items:
 | Sarah: "Never mind about the eggs" | The earlier **Pick up eggs** is deleted |
 | You: "Got the milk" | **Pick up milk** is checked off |
 | Sarah: "Dentist moved to Wednesday at 10" | The existing dentist event moves (keeps its length) |
-| Sarah: "I'd love this for my birthday https://…" | **🎁 Gifts for Sarah** list gets the item with the link |
+| Sarah: "I'd love this for my birthday https://…" | Added to **🎁 Gift ideas** in Sarah's column, tagged #Sarah, with the link |
 
 Every item's notes start with who it's from and when, then a one-line summary and the original
 message. Your own messages are only read when that conversation has open items, and they can
@@ -118,8 +118,23 @@ recorded in the item's history on the **Created items** page, and **Undo** rever
 the old date comes back, a completed item is reopened, a cancelled one is re-created.
 
 **Collections** are lists for things that aren't to-dos: gift ideas, things to remember about
-someone, places to try, shows and books, recipes, someday ideas. You can add, rename or turn
-them off in Settings. The description you write is what tells the model what belongs there.
+someone, places to try, shows and books, recipes, someday ideas. Each collection is **one**
+Reminders list. People are attached two ways:
+
+- **Columns:** for collections set to "one column per person" (Gift ideas and People by
+  default), each person gets a section. Switch the list to column view in Reminders to see
+  Sarah | Mom | Emma side by side.
+- **Tags:** every reminder tied to a person, to-dos included, gets a tag like `#Sarah`. Tap the
+  tag in Reminders' sidebar to see everything for that person across lists.
+
+Apple's public Reminders API can't set sections or tags, so the Mac agent uses Apple's private
+ReminderKit framework for just that step. If it's unavailable (for example after a macOS update
+changes it), the item is still created and the person's name goes in the title instead
+("Sarah · Kindle Paperwhite"). The System page shows which mode is active. To check it on the
+Mac, run `mac-agent --probe-reminderkit --write`.
+
+You can add, rename or turn off collections in Settings. The description you write is what tells
+the model what belongs there.
 
 ## How it behaves
 

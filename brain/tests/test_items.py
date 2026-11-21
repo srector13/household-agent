@@ -182,7 +182,8 @@ def test_gift_idea_goes_to_persons_list_with_link(client, llm):
         summary="Wife mentioned she'd love one for her birthday."))
     post(client, event_id="imessage:1", text=f"I'd love one of these someday {url}")
     p = run_mac(client)[0]["payload"]
-    assert p["list"] == "🎁 Gifts for Wife" and p["url"] == url and p["create_list_if_missing"] is True
+    assert p["list"] == "🎁 Gift ideas" and p["url"] == url and p["create_list_if_missing"] is True
+    assert p["section"] == "Wife" and p["tags"] == ["Wife"] and p["title_fallback"] == "Wife · Kindle Paperwhite"
     assert p["due"] is None and p["alert"] is None
     assert p["notes"].splitlines()[1] == "Wife mentioned she'd love one for her birthday."
     it = items(client)[0]
@@ -192,7 +193,8 @@ def test_gift_idea_goes_to_persons_list_with_link(client, llm):
     llm.responder = lambda p: extraction(act("save_to_collection", collection="gift_ideas", title="Bread maker",
                                              person="Mom"))
     post(client, event_id="imessage:2", text="Mom said she wants a bread maker")
-    assert run_mac(client)[0]["payload"]["list"] == "🎁 Gifts for Mom"
+    p = run_mac(client)[0]["payload"]
+    assert p["list"] == "🎁 Gift ideas" and p["section"] == "Mom" and p["tags"] == ["Mom"]
 
 
 def test_disabled_or_unknown_collection_needs_review(client, llm):
@@ -254,3 +256,47 @@ def test_backfill_existing_items(tmp_path, llm, alerter):
         assert it["chat_key"] == "+17855550000"
         assert c.app.state.db.get_command(cid)["item_id"] == it["item_id"]
         assert reg.backfill() == 0  # only once
+
+
+def test_todos_get_a_tag_but_no_section(client, llm):
+    llm.responder = lambda p: extraction(reminder("Pick up eggs"))
+    post(client, text="grab eggs?")
+    p = run_mac(client)[0]["payload"]
+    assert p["list"] == "Household" and p["section"] is None and p["tags"] == ["Wife"]
+
+
+def test_ungrouped_collection_tag_only(client, llm):
+    llm.responder = lambda p: extraction(act("save_to_collection", collection="places", title="Sushi Zen"))
+    post(client, text="we should try Sushi Zen")
+    p = run_mac(client)[0]["payload"]
+    assert p["list"] == "📍 Places to try" and p["section"] is None and p["tags"] == ["Wife"]
+
+
+def test_person_tags_off(client, llm):
+    client.patch("/api/settings", json={"rules": {"person_tags": False}})
+    llm.responder = lambda p: extraction(reminder("Pick up eggs"))
+    post(client, text="grab eggs?")
+    p = run_mac(client)[0]["payload"]
+    assert p["tags"] == [] and p["title_fallback"] is None and p["title"] == "Pick up eggs"
+
+
+def test_mac_fallback_warning_updates_item(client, llm):
+    llm.responder = lambda p: extraction(act("save_to_collection", collection="gift_ideas", title="Kindle"))
+    post(client, text="I'd love a kindle")
+    c = client.get("/api/agent/commands?wait=0", headers=AUTH).json()["commands"][0]
+    client.post(f"/api/agent/commands/{c['command_id']}/result", headers=AUTH, json={
+        "status": "done", "apple_item_id": "A1", "warning": "ReminderKit unavailable — used title fallback"})
+    it = items(client)[0]
+    assert it["status"] == "active" and it["title"] == "Wife · Kindle" and it["state"]["placed"] is False
+    log = client.app_state.pipeline.items.history(it["item_id"])
+    assert any(h["action"] == "warning" for h in log)
+    tr = client.get("/api/events/imessage:1").json()["trace"]
+    assert any(t["step"] == "command_result" and t["data"]["warning"] for t in tr)
+
+
+def test_person_tag_sanitizing():
+    from app.planner import person_tag
+    assert person_tag("Family group") == "FamilyGroup"
+    assert person_tag("Mom") == "Mom"
+    assert person_tag("José's mom!") == "JoséSMom"
+    assert person_tag("") is None and person_tag("!!") is None

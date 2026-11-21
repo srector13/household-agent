@@ -59,6 +59,26 @@ def _soon(now: datetime) -> datetime:
     return t.replace(second=0, microsecond=0, minute=0) + timedelta(minutes=minute)
 
 
+def person_tag(name: str | None) -> str | None:
+    """Reminders tags are single words: "Family group" → "FamilyGroup"."""
+    if not name:
+        return None
+    words = re.findall(r"[^\W_]+", name, flags=re.UNICODE)
+    tag = "".join(w[:1].upper() + w[1:] for w in words)[:40]
+    return tag or None
+
+
+def _organize(cfg: Config, payload: dict, person: str | None, *, section: bool) -> dict:
+    """Section (column) + #tag for a person, with a plain-title fallback for when the Mac can't do it."""
+    tag = person_tag(person) if cfg.rules.person_tags else None
+    sec = person if (section and person) else None
+    payload["section"] = sec
+    payload["tags"] = [tag] if tag else []
+    payload["title_fallback"] = (f"{person} · {payload['title']}" if (sec or tag) and person
+                                 and not payload["title"].endswith(f"· {person}") else None)
+    return payload
+
+
 def _snippet(text: str, n: int = 240) -> str:
     t = " ".join(text.strip().split())
     return t if len(t) <= n else t[: n - 1] + "…"
@@ -159,13 +179,13 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
                 due, due_time = None, None
             alert = _reminder_when(cfg, due, due_time, now, title, p.review_reasons)
             shown = f"{title} · {person}" if cfg.rules.person_in_title else title
-            payload = {
+            payload = _organize(cfg, {
                 "title": shown, "list": cfg.rules.reminder_list,
                 "create_list_if_missing": cfg.rules.create_missing_lists,
                 "due": due.isoformat() if due else None,
                 "due_time": due_time.strftime("%H:%M") if (due and due_time) else None,
                 "alert": alert, "url": a.url, "notes": _notes(cfg, ev, a, tag, person), "tag": tag,
-            }
+            }, person, section=False)
             p.commands.append(PlannedCommand(op="create_reminder", payload=payload, new_item={
                 "seq": seq, "kind": "reminder", "collection": None, "person": person, "title": shown,
                 "state": state_from_payload("create_reminder", payload), "tag": tag}))
@@ -175,11 +195,11 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
                 p.review_reasons.append(f"{title}: unknown or disabled collection {a.collection!r}")
                 continue
             about = (a.person or "").strip() or person
-            payload = {
+            payload = _organize(cfg, {
                 "title": title, "list": col.list.format(person=about), "create_list_if_missing": True,
                 "due": None, "due_time": None, "alert": None, "url": a.url,
                 "notes": _notes(cfg, ev, a, tag, person), "tag": tag,
-            }
+            }, about, section=col.group_by_person)
             p.commands.append(PlannedCommand(op="create_reminder", payload=payload, meta={"collection": col.key},
                                              new_item={"seq": seq, "kind": "reminder", "collection": col.key,
                                                        "person": about, "title": title,

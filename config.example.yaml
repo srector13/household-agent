@@ -39,6 +39,7 @@ rules:
   reminder_list: Household                # every to-do goes to this one list
   create_missing_lists: true
   self_updates: true                      # my replies ("I'll do it tomorrow", "got it") may change items
+  person_tags: true                       # tag reminders with the person (#Sarah)
   person_in_title: false                  # "Pick up eggs · Sarah" (name + summary are always in the notes)
   open_item_days: 21                      # how far back "never mind" / "move it to Friday" can reach
   calendars:
@@ -46,13 +47,15 @@ rules:
     default_duration_min: 60
     alert_minutes_before: 30
 
-# Things worth keeping that aren't to-dos. Each goes to its own Reminders list; {person} = who it's
-# about. Omit this section to use the defaults (gift ideas, things to remember, places, watch & read,
-# recipes, someday). Easier to edit on the dashboard's Settings page.
+# Things worth keeping that aren't to-dos. Each collection is one Reminders list; with
+# group_by_person each person gets a section (a column in Reminders' column view). Omit this
+# section to use the defaults (gift ideas, people, places, watch & read, recipes, someday).
+# Easier to edit on the dashboard's Settings page.
 # collections:
 #   - key: gift_ideas
 #     label: Gift ideas
-#     list: "🎁 Gifts for {person}"
+#     list: "🎁 Gift ideas"
+#     group_by_person: true
 #     description: Something a person says they want or would like as a gift — include the link.
 #     enabled: true
 

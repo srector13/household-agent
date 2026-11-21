@@ -340,7 +340,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         if tab == "collections":
             rows = views.item_cards(db, reg.listing(statuses=("planned", "active"), collection=True))
             for it in rows:
-                groups.setdefault(it["collection"], {}).setdefault(it["state"].get("list") or "?", []).append(it)
+                groups.setdefault(it["collection"], {}).setdefault(it["person"] or "Unassigned", []).append(it)
             rows = []
         elif tab == "history":
             rows = views.item_cards(db, reg.listing(statuses=("completed", "cancelled", "undone", "rejected", "failed"),

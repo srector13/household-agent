@@ -117,6 +117,12 @@ class Items:
             self.log(item["item_id"], cmd["event_id"], "failed", {"op": cmd["op"], "error": res.error})
             return
         fields: dict[str, Any] = {}
+        if res.warning:
+            self.log(item["item_id"], cmd["event_id"], "warning", {"warning": res.warning})
+            if cmd["op"] == "create_reminder" and cmd["payload"].get("title_fallback"):
+                # The Mac couldn't file it under the person, so it used the fallback title.
+                fields["title"] = cmd["payload"]["title_fallback"]
+                fields["state"] = {**item["state"], "section": None, "tags": [], "placed": False}
         if res.apple_item_id and cmd["op"] != "delete_item":
             fields["apple_item_id"] = res.apple_item_id
         meta = cmd.get("meta") or {}
@@ -171,8 +177,8 @@ class Items:
         return n
 
 
-STATE_KEYS = ("list", "calendar", "due", "due_time", "alert", "start", "end", "all_day", "location", "url",
-              "notes", "alert_minutes_before", "create_list_if_missing")
+STATE_KEYS = ("list", "section", "tags", "title_fallback", "calendar", "due", "due_time", "alert", "start", "end",
+              "all_day", "location", "url", "notes", "alert_minutes_before", "create_list_if_missing")
 
 
 def state_from_payload(op: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -183,7 +189,8 @@ def create_payload(item: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     """Rebuild a create command from an item (used to restore an item whose cancel was undone)."""
     st = item["state"]
     if item["kind"] == "reminder":
-        keys = ("list", "create_list_if_missing", "due", "due_time", "alert", "notes", "url")
+        keys = ("list", "section", "tags", "title_fallback", "create_list_if_missing", "due", "due_time", "alert",
+                "notes", "url")
         return "create_reminder", {"title": item["title"], **{k: st.get(k) for k in keys}, "tag": item["tag"]}
     keys = ("calendar", "start", "end", "all_day", "location", "alert_minutes_before", "notes", "url")
     return "create_event", {"title": item["title"], **{k: st.get(k) for k in keys}, "tag": item["tag"]}

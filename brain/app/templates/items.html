@@ -11,8 +11,8 @@
     <div class="top"><span class="who" style="{{ 'text-decoration:line-through;opacity:.7' if it.status in ('cancelled','undone','rejected') }}">{{ it.title }}</span></div>
     <div class="when">
       {% if ev %}{{ st.calendar }} · {% if st.all_day %}{{ st.start|localtime("%a %b %-d") }}{% else %}{{ st.start|localtime }}{% endif %}{% if st.location %} · {{ st.location }}{% endif %}
-      {% else %}{{ st.list }}{% if st.due %} · due {{ st.due }}{% if st.due_time %} {{ st.due_time }}{% endif %}{% endif %}{% endif %}
-      · {{ it.person or "?" }}
+      {% else %}{{ st.list }}{% if st.section %} › {{ st.section }}{% endif %}{% for tg in st.tags or [] %} #{{ tg }}{% endfor %}{% if st.due %} · due {{ st.due }}{% if st.due_time %} {{ st.due_time }}{% endif %}{% endif %}{% endif %}
+      {% if not st.section and not st.tags %}· {{ it.person or "?" }}{% endif %}
       {% if st.url %} · <a class="link" href="{{ st.url }}" target="_blank" rel="noopener">{{ icon("link", 12) }} link</a>{% endif %}
     </div>
     {% if it.origin %}<div class="muted" style="font-size:12.5px;margin-top:3px">{{ "You" if it.origin.is_from_me else it.origin.sender_label }}: “{{ it.origin.text[:140] }}{{ "…" if it.origin.text|length > 140 }}”</div>{% endif %}
@@ -40,8 +40,8 @@
   <div class="card">
     <div class="card-h"><h2>{{ icon("gift" if key == "gift_ideas" else "bookmark", 16) }} {{ collection_label(key) }}</h2></div>
     <div class="card-b flush">
-      {% for list_name, its in lists.items() %}
-      <div class="colgroup"><h3>{{ list_name }} <span class="badge b-muted plain">{{ its|length }}</span></h3>
+      {% for person, its in lists.items() %}
+      <div class="colgroup"><h3>{{ person }} <span class="badge b-muted plain">{{ its|length }}</span>{% if its[0].state.section %}<span class="faint" style="font-weight:500">· column in {{ its[0].state.list }}</span>{% elif its[0].state.list %}<span class="faint" style="font-weight:500">· #{{ its[0].state.tags[0] if its[0].state.tags else person }} in {{ its[0].state.list }}</span>{% endif %}</h3>
         <div class="list">{% for it in its %}{{ item_row(it) }}{% endfor %}</div></div>
       {% endfor %}
     </div>

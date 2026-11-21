@@ -73,6 +73,7 @@ class RulesConfig(BaseModel):
     create_missing_lists: bool = True
     self_updates: bool = True        # my replies ("I'll do it tomorrow") may update/complete/cancel items
     person_in_title: bool = False    # "Pick up eggs · Sarah" (the name is always in the notes)
+    person_tags: bool = True         # tag reminders with the person (#Sarah) — needs the Mac's ReminderKit support
     open_item_days: int = Field(21, ge=1, le=365)  # how far back items stay editable by context
     calendars: CalendarsConfig = Field(default_factory=CalendarsConfig)
 
@@ -101,7 +102,8 @@ class Collection(BaseModel):
     key: str = Field(pattern=r"^[a-z][a-z0-9_]{1,30}$")
     label: str = Field(min_length=1, max_length=60)
     description: str = Field(min_length=3, max_length=300)  # tells the model what belongs here
-    list: str = Field(min_length=1, max_length=80)          # Reminders list name; {person} = who it's about
+    list: str = Field(min_length=1, max_length=80)          # Reminders list name ({person} allowed, but see below)
+    group_by_person: bool = False   # one section per person in the list → a column each in column view
     enabled: bool = True
 
     @field_validator("list")
@@ -115,10 +117,10 @@ class Collection(BaseModel):
 
 
 DEFAULT_COLLECTIONS = [
-    Collection(key="gift_ideas", label="Gift ideas", list="🎁 Gifts for {person}",
+    Collection(key="gift_ideas", label="Gift ideas", list="🎁 Gift ideas", group_by_person=True,
                description="Something a person says they want, like, or need, or that would make a good gift for "
                            "them — include the link or product details."),
-    Collection(key="about_person", label="Things to remember", list="👤 {person}",
+    Collection(key="about_person", label="Things to remember", list="👤 People", group_by_person=True,
                description="Lasting facts about a person worth remembering: sizes, favorites, allergies, "
                            "preferences, important names and dates."),
     Collection(key="places", label="Places to try", list="📍 Places to try",

@@ -107,6 +107,7 @@ class Heartbeat(BaseModel):
     calendar_ok: bool = False
     uptime_s: float = 0
     buffered_events: int = 0
+    reminderkit_ok: bool | None = None  # sections + tags available on the Mac
     allowlist_version: int | None = None
     allowlist_size: int | None = None
 
@@ -115,6 +116,7 @@ class CommandResult(BaseModel):
     status: Literal["done", "failed"]
     apple_item_id: str | None = None
     error: str | None = None
+    warning: str | None = None  # done, but e.g. section/tags fell back to the name in the title
 
 
 class PlannedCommand(BaseModel):

@@ -20,6 +20,7 @@
           <dt>Full Disk Access</dt><dd>{{ yes(a.fda_ok) }}</dd>
           <dt>Reminders</dt><dd>{{ yes(a.reminders_ok) }}</dd>
           <dt>Calendar</dt><dd>{{ yes(a.calendar_ok) }}</dd>
+          <dt>Sections & tags</dt><dd>{% if a.reminderkit_ok %}<span class="badge b-ok">working</span>{% elif a.reminderkit_ok is none %}<span class="badge b-muted">not reported</span> <span class="faint">(agent older than 0.4)</span>{% else %}<span class="badge b-warn">unavailable</span> <span class="faint">names go in titles instead</span>{% endif %}</dd>
           <dt>Last ROWID</dt><dd class="mono">{{ a.last_rowid }}</dd>
           <dt>Outbox</dt><dd>{{ a.buffered_events }} buffered</dd>
           <dt>Allowlist sync</dt><dd>{% if a.allowlist_version is none %}<span class="badge b-warn">not synced</span>{% elif a.allowlist_version == settings_version %}<span class="badge b-ok">v{{ a.allowlist_version }} · {{ a.allowlist_size }} entries</span>{% else %}<span class="badge b-info">v{{ a.allowlist_version }} → v{{ settings_version }} pending</span>{% endif %}</dd>

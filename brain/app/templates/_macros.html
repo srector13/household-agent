@@ -43,7 +43,7 @@
 <div class="itemcard {{ cls }} {{ 'old' if old or c.status == 'cancelled' }}">
   <span class="ic">{{ icon(ic, 17) }}</span>
   <div style="min-width:0"><div class="t">{{ t }}</div>
-    <div class="m">{{ m }}{% if p.url %} · <a class="link" href="{{ p.url }}" target="_blank" rel="noopener">{{ icon("link", 12) }} link</a>{% endif %}{% if old %} · earlier run{% endif %}</div>
+    <div class="m">{{ m }}{% if p.section %} · {{ icon("dashboard", 12) }} {{ p.section }} column{% endif %}{% for tg in p.tags or [] %} · #{{ tg }}{% endfor %}{% if p.url %} · <a class="link" href="{{ p.url }}" target="_blank" rel="noopener">{{ icon("link", 12) }} link</a>{% endif %}{% if old %} · earlier run{% endif %}</div>
     {% if c.error %}<div class="m" style="color:var(--bad)">{{ c.error }}</div>{% endif %}</div>
   {% if c.status %}<span class="badge b-{{ {'done':'ok','failed':'bad','held':'warn','pending':'info','sent':'info'}.get(c.status, 'muted') }}">{{ {'done':'done on Mac','held':'awaiting review','sent':'sent to Mac'}.get(c.status, c.status) }}</span>{% else %}<span></span>{% endif %}
 </div>
