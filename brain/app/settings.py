@@ -28,7 +28,7 @@ EDITABLE: dict[str, Any] = {
         "mail": {"enabled": True, "host": True, "port": True, "username": True, "password": True,
                  "folders": True, "allow_senders": True, "labels": True},
     },
-    "rules": {"default_alert_time": True, "review_threshold": True, "reminder_list": True,
+    "rules": {"default_alert_time": True, "no_time_due_now": True, "review_threshold": True, "reminder_list": True,
               "create_missing_lists": True, "self_updates": True, "person_in_title": True, "open_item_days": True,
               "person_tags": True, "track_promises": True, "waiting_list": True, "waiting_default_days": True, "breakdown": True,
               "calendars": {"default": True, "default_duration_min": True, "alert_minutes_before": True}},

@@ -440,7 +440,9 @@ private struct RulesPage: View {
         Form {
             Section("Reminders") {
                 TextFieldRow(store: store, path: "rules.reminder_list", label: "Everything goes to this list")
-                TimeField(store: store, path: "rules.default_alert_time", label: "Remind me at (no time given)")
+                ToggleField(store: store, path: "rules.no_time_due_now", label: "No time given? Due right now",
+                            help: "“Pack a bag for the kids” is due now, not later today.")
+                TimeField(store: store, path: "rules.default_alert_time", label: "Later days with no time, remind me at")
                 ToggleField(store: store, path: "rules.create_missing_lists", label: "Create lists that don't exist")
                 ToggleField(store: store, path: "rules.person_tags", label: "File under the person (sections & tags)")
                 ToggleField(store: store, path: "rules.person_in_title", label: "Also put the name in the title")

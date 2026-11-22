@@ -72,7 +72,8 @@
       <div class="card-h"><div><h2>Reminders & calendar</h2><p>Every reminder goes into one list, so they're all in one place on your iPhone.</p></div></div>
       <div class="card-b fields">
         {{ text("rules.reminder_list", "Reminders list", "All reminders land here. Created on the Mac if it doesn't exist (see toggle).") }}
-        {{ text("rules.default_alert_time", "Default alert time", "When a reminder has a day but no time.", "time") }}
+        {{ text("rules.default_alert_time", "Default alert time", "When a reminder has a later day but no time.", "time") }}
+        <div class="full">{{ toggle("rules.no_time_due_now", "No time given? Due right now", "“Pack a bag for the kids” is due now, not later today. Reminders for later days still use the default time.") }}</div>
         {{ text("rules.calendars.default", "Calendar", "Appointments and pickups go on this calendar (it must already exist).") }}
         {{ text("rules.calendars.default_duration_min", "Default event length (minutes)", "", "number", 'min="5" max="1440"') }}
         {{ text("rules.calendars.alert_minutes_before", "Event alert (minutes before)", "Blank = no alert.", "number", 'min="0" max="10080"') }}

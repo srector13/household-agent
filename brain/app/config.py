@@ -71,6 +71,9 @@ class CalendarsConfig(BaseModel):
 
 class RulesConfig(BaseModel):
     default_alert_time: str = "16:00"
+    # A to-do with no time of day ("pack a bag for the kids") is due right now, not at the default
+    # alert time — today or with no date at all. Later days ("tomorrow") still use default_alert_time.
+    no_time_due_now: bool = True
     review_threshold: float = Field(0.75, ge=0, le=1)
     reminder_list: str = Field("Household", min_length=1)  # every to-do goes to this one list
     create_missing_lists: bool = True

@@ -154,7 +154,10 @@ async def run_case(cfg: Config, llm: LLMClient, tpl: PromptTemplate, case: dict[
         except LLMError as e:
             out.update(passed=False, problems=[f"LLM error: {e}"], raw=getattr(e, "raw", None))
             return out
-        p = plan(cfg, ev, res.extraction, now, open_items=open_items)
+        # Score the model's dates, not the planner's "no time = due now" rule.
+        pcfg = cfg.model_copy(deep=True)
+        pcfg.rules.no_time_due_now = False
+        p = plan(pcfg, ev, res.extraction, now, open_items=open_items)
         out.update(commands=[c.model_dump() for c in p.commands], ms=res.duration_ms, raw=res.raw,
                    confidence=res.extraction.confidence, review=p.review_reasons)
     out["refs"] = refs

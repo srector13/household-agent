@@ -185,7 +185,7 @@ watch:
     allow:
       - {{handle: "{SARAH}", label: "Sarah"}}
       - {{chat_id: "{FAMILY}", label: "Family group"}}
-rules: {{reminder_list: Household}}
+rules: {{reminder_list: Household, no_time_due_now: false}}  # keep a few undated to-dos for the demo
 security: {{agent_token: {TOKEN}}}
 storage: {{db_path: {db}, backup_dir: {tmp / 'backups'}}}
 dashboard: {{public_url: "http://127.0.0.1:{PORT}"}}

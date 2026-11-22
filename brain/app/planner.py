@@ -193,6 +193,10 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
             except ValueError as e:
                 p.review_reasons.append(f"{title}: invalid date/time ({e})")
                 due, due_time = None, None
+            if cfg.rules.no_time_due_now and not due_time and (due is None or due == now.date()):
+                # "Pack a bag for the kids" means now, not at 4 pm.
+                soon = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
+                due, due_time = soon.date(), soon.time()
             alert = _reminder_when(cfg, due, due_time, now, title, p.review_reasons)
             shown = f"{title} · {person}" if cfg.rules.person_in_title and not me else title
             payload = _organize(cfg, {
