@@ -612,8 +612,8 @@ private struct AlertsPage: View {
             }
             Section("App") {
                 TextFieldRow(store: store, path: "dashboard.app_name", label: "Name")
-                TextFieldRow(store: store, path: "dashboard.public_url", label: "Dashboard URL", keyboard: .URL,
-                             help: "Used in alert links, e.g. https://brain.your-tailnet.ts.net")
+                TextFieldRow(store: store, path: "dashboard.public_url", label: "Dashboard URL",
+                             help: "Used in alert links, e.g. https://brain.your-tailnet.ts.net", keyboard: .URL)
                 TextFieldRow(store: store, path: "timezone", label: "Time zone", placeholder: "America/Chicago")
             }
         }
