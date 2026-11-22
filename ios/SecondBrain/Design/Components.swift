@@ -312,7 +312,7 @@ struct Loader<T, Content: View>: View {
                 } description: {
                     Text(error)
                 } actions: {
-                    Button("Try again") { Task { await reload() } }.buttonStyle(.glassProminent)
+                    Button("Try Again") { Task { await reload() } }.buttonStyle(.borderedProminent)
                 }
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -25,6 +25,8 @@ struct FocusView: View {
                     ProgressView()
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button { close() } label: { Image(systemName: "xmark") }.accessibilityLabel("Close")
@@ -62,14 +64,15 @@ struct FocusView: View {
                         }
                         .padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 22))
                     } else {
                         Button {
                             Task { await breakdown() }
                         } label: {
                             Label(busy ? "Thinking…" : "Find a tiny first step", systemImage: "shoeprints.fill")
                         }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
                         .disabled(busy)
                     }
                     if !d.steps.isEmpty {
@@ -145,7 +148,7 @@ struct FocusView: View {
                         Text(n.title).font(.headline)
                     }
                     .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 22))
                     Button {
                         Task { await switchTo(n.itemId) }
                     } label: {
@@ -288,18 +291,18 @@ private struct TimerBlock: View {
             }
             if timer != nil {
                 HStack {
-                    Button("+5 min", action: add).buttonStyle(.glass)
-                    Button("Stop timer", action: stop).buttonStyle(.glass)
+                    Button("+5 min", action: add).buttonStyle(.bordered)
+                    Button("Stop timer", action: stop).buttonStyle(.bordered)
                 }
             } else {
                 HStack {
                     ForEach([5, 10, 25], id: \.self) { m in
                         Button("\(m) min") { minutes = m }
-                            .buttonStyle(.glass)
-                            .tint(minutes == m ? .blue : .primary)
+                            .buttonStyle(.bordered)
+                            .tint(minutes == m ? .blue : .secondary)
                             .fontWeight(minutes == m ? .bold : .regular)
                     }
-                    Button("Start") { start(minutes) }.buttonStyle(.glassProminent)
+                    Button("Start") { start(minutes) }.buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("focus-start")
                 }
             }

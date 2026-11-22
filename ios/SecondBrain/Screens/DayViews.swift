@@ -52,7 +52,7 @@ private struct TodayList: View {
 
             if !t.done.isEmpty {
                 Section("Done today · \(t.done.count)") {
-                    ForEach(t.done) { it in ItemLine(item: it) }
+                    ForEach(t.done) { it in ReminderRow(item: it) }
                 }
             }
 
@@ -78,7 +78,8 @@ private struct TodayList: View {
                     } label: {
                         Text(chosen.isEmpty ? "Let the model pick tomorrow" : "Use these \(chosen.count) tomorrow").frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
                 }
             } header: {
                 Text("Tomorrow")
@@ -152,7 +153,7 @@ private struct WeeklyDeck: View {
                     }
                 }
                 .frame(maxHeight: .infinity)
-                GlassEffectContainer(spacing: 18) {
+                Group {
                     HStack(spacing: 18) {
                         roundButton("trash", "Drop", .red) { act("drop") }
                         roundButton("clock", "Schedule", .orange) { Task { await schedule() } }
@@ -164,6 +165,7 @@ private struct WeeklyDeck: View {
             }
         }
         .padding()
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .confirmationDialog("Schedule it", isPresented: Binding(get: { scheduling != nil }, set: { if !$0 { scheduling = nil } }),
                             titleVisibility: .visible, presenting: scheduling) { o in
             ForEach(o.options) { opt in
@@ -214,7 +216,8 @@ private struct WeeklyDeck: View {
                     .frame(width: 58, height: 58)
             }
             .buttonStyle(.plain)
-            .glassEffect(prominent ? .regular.tint(color).interactive() : .regular.interactive(), in: .circle)
+            .background(prominent ? color : Color(uiColor: .secondarySystemGroupedBackground), in: .circle)
+            .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
             .accessibilityLabel(label)
             Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
         }

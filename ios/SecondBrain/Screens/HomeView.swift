@@ -8,7 +8,7 @@ struct HomeView: View {
         Loader({ try await $0.home() }) { h in
             HomeList(h: h)
         }
-        .navigationTitle(app.info.map { _ in greeting } ?? "Home")
+        .navigationTitle(greeting)
     }
 
     private var greeting: String {
@@ -24,10 +24,9 @@ private struct HomeList: View {
     var body: some View {
         List {
             Section {
-                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
-                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 0))
+            } header: {
+                Text(subtitle).font(.subheadline).foregroundStyle(.secondary).textCase(nil)
             }
-            .listSectionSpacing(4)
 
             if !h.problems.isEmpty {
                 Section {
@@ -40,27 +39,24 @@ private struct HomeList: View {
             }
 
             if let n = h.next {
-                Section { NextUpCard(n: n) }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
+                Section { NextUpRow(n: n) }
             }
+
+            TodaySection(h: h)
 
             if h.weeklyCount > 0 {
                 Section {
                     NavigationLink(value: Route.weekly) {
-                        HStack(spacing: 12) {
-                            IconTile(symbol: "sparkles", color: .green)
-                            VStack(alignment: .leading) {
-                                Text("Weekly reset").font(.headline)
-                                Text("\(h.weeklyCount) thing\(h.weeklyCount == 1 ? "" : "s") gone stale · takes 2 minutes")
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Weekly reset")
+                                Text("\(h.weeklyCount) thing\(h.weeklyCount == 1 ? "" : "s") gone stale · about 2 minutes")
                                     .font(.subheadline).foregroundStyle(.secondary)
                             }
-                        }
+                        } icon: { Image(systemName: "sparkles").foregroundStyle(.green) }
                     }
                 }
             }
-
-            TodaySection(h: h)
 
             if h.attention.count > 0 {
                 NeedsYouSection(a: h.attention)
@@ -70,29 +66,31 @@ private struct HomeList: View {
                 Section {
                     ForEach(h.agenda) { u in AgendaRow(u: u) }
                 } header: {
-                    HStack { Text("Coming up"); Spacer(); Button("Lists") { app.tab = .lists }.font(.subheadline) }
+                    HeaderRow("Coming Up") { Button("Lists") { app.tab = .lists } }
                 }
+                .headerProminence(.increased)
             }
 
             if !h.recent.isEmpty {
                 Section {
                     ForEach(h.recent) { r in RecentRow(r: r) }
                 } header: {
-                    HStack {
-                        Text("Just now"); Spacer()
-                        NavigationLink("All activity", value: Route.activity(status: nil)).font(.subheadline)
-                    }
+                    HeaderRow("Just Now") { NavigationLink("All Activity", value: Route.activity(status: nil)) }
                 }
+                .headerProminence(.increased)
             }
 
             Section {
+            } footer: {
                 NavigationLink(value: Route.status) {
-                    HStack(spacing: 8) {
-                        Circle().fill(h.problems.isEmpty ? Color.green : .orange).frame(width: 8, height: 8)
+                    HStack(spacing: 6) {
+                        Circle().fill(h.problems.isEmpty ? Color.green : .orange).frame(width: 7, height: 7)
                         Text(h.problems.isEmpty ? "Everything's running" : "Something needs attention")
-                            .font(.footnote).foregroundStyle(.secondary)
                     }
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.plain)
             }
         }
         .listStyle(.insetGrouped)
@@ -105,39 +103,35 @@ private struct HomeList: View {
     }
 }
 
-/// The next thing with a time today, big at the top.
-private struct NextUpCard: View {
+/// The next thing with a time today — like a Calendar widget row: colored bar, title, when.
+private struct NextUpRow: View {
     let n: Home.NextUp
 
     var body: some View {
         let at = BrainDate.parse(n.at)
         let accent = Color(hex: n.color) ?? (n.kind == "event" ? .red : .blue)
-        HStack(spacing: 14) {
-            VStack(spacing: 0) {
-                Text(at.map { BrainDate.time($0).replacingOccurrences(of: " AM", with: "").replacingOccurrences(of: " PM", with: "") } ?? "")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .lineLimit(1).minimumScaleFactor(0.6)
-                Text(at.map { BrainDate.time($0).hasSuffix("PM") ? "PM" : "AM" } ?? "")
-                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            }
-            .frame(width: 72)
-            RoundedRectangle(cornerRadius: 2).fill(accent).frame(width: 4)
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 2.5).fill(accent).frame(width: 5)
             VStack(alignment: .leading, spacing: 3) {
-                Text("\(n.ongoing ? "Happening now" : "Up next") · \(n.inLabel)")
-                    .font(.caption.weight(.semibold)).foregroundStyle(accent).textCase(.uppercase)
+                Text(n.ongoing ? "Now" : "Up Next · \(n.inLabel)")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(accent)
                 Text(n.title).font(.title3.weight(.semibold)).lineLimit(2)
                 if let sub = detail { Text(sub).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            if let at {
+                Text(BrainDate.time(at))
+                    .font(.title3.weight(.semibold)).monospacedDigit()
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
         }
-        .padding(16)
-        .glassEffect(.regular.tint(accent.opacity(0.10)), in: .rect(cornerRadius: 26))
+        .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
     }
 
     private var detail: String? {
         if n.kind == "event", let e = BrainDate.parse(n.end) {
-            return "until \(BrainDate.time(e))" + (n.where.map { " · \($0)" } ?? "")
+            return "Until \(BrainDate.time(e))" + (n.where.map { " · \($0)" } ?? "")
         }
         return n.where
     }
@@ -150,22 +144,21 @@ private struct TodaySection: View {
     var body: some View {
         Section {
             if h.picks.isEmpty {
-                VStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(h.beforeMorning ? "Your three arrive at \(BrainDate.clock(h.morningTime) ?? h.morningTime)." : "Nothing picked for today yet.")
                         .foregroundStyle(.secondary)
-                    Button {
+                    Button("Plan My Day", systemImage: "sun.max") {
                         Task { await app.run("Picked your three") { try await $0.todayAction("repick") } }
-                    } label: {
-                        Label("Plan my day", systemImage: "sun.max")
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                .padding(.vertical, 4)
             }
             ForEach(h.picks) { p in PickRow(p: p) }
             if !h.picks.isEmpty && h.picksLeft == 0 {
-                Text("🎉 All three done. Anything else today is a bonus.").font(.subheadline).foregroundStyle(.secondary)
+                Label("All three done. Anything else is a bonus.", systemImage: "party.popper")
+                    .foregroundStyle(.secondary)
             }
             if h.evening {
                 NavigationLink(value: Route.today) {
@@ -173,23 +166,21 @@ private struct TodaySection: View {
                 }
             }
         } header: {
-            HStack {
-                Text("Today")
-                if !h.picks.isEmpty {
-                    Text("\(h.picksLeft) of \(h.picks.count) left").foregroundStyle(.secondary).textCase(nil)
+            HeaderRow("Today", detail: h.picks.isEmpty ? nil : "\(h.picksLeft) of \(h.picks.count) left") {
+                HStack(spacing: 14) {
+                    if let first = h.picks.first(where: { !$0.isDone && !$0.isGone && $0.kind == "reminder" }) {
+                        Button("Focus") { app.focusItem = first.itemId }
+                            .accessibilityIdentifier("focus-first")
+                    }
+                    NavigationLink("Plan", value: Route.today)
                 }
-                Spacer()
-                if let first = h.picks.first(where: { !$0.isDone && !$0.isGone && $0.kind == "reminder" }) {
-                    Button { app.focusItem = first.itemId } label: { Label("Focus", systemImage: "scope") }
-                        .font(.subheadline.weight(.semibold))
-                        .accessibilityIdentifier("focus-first")
-                }
-                NavigationLink("Plan", value: Route.today).font(.subheadline)
             }
         }
+        .headerProminence(.increased)
     }
 }
 
+/// One of today's picks — a Reminders row; tap to focus on it.
 struct PickRow: View {
     @Environment(AppModel.self) private var app
     let p: Pick
@@ -197,29 +188,34 @@ struct PickRow: View {
 
     var body: some View {
         let isDone = done ?? p.isDone
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             if p.kind == "reminder" && !p.isGone {
-                Button { Task { await toggle(!isDone) } } label: { CheckCircle(on: isDone) }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(isDone ? "Mark not done" : "Mark done")
+                Button { Task { await toggle(!isDone) } } label: {
+                    Image(systemName: isDone ? "largecircle.fill.circle" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(isDone ? Color.accentColor : Color.secondary.opacity(0.6))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isDone ? "Mark not done" : "Mark done")
             } else {
-                Image(systemName: p.kind == "event" ? "calendar" : "xmark").foregroundStyle(.secondary).frame(width: 24)
+                Image(systemName: p.kind == "event" ? "calendar" : "minus.circle").foregroundStyle(.secondary).frame(width: 24)
             }
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     if p.category == "promise" { Image(systemName: "handshake").foregroundStyle(.teal) }
                     if p.category == "waiting" { Image(systemName: "hourglass").foregroundStyle(.blue) }
-                    Text(p.title).strikethrough(isDone || p.isGone).foregroundStyle(isDone || p.isGone ? .secondary : .primary)
+                    Text(p.title).strikethrough(p.isGone)
+                        .foregroundStyle(isDone || p.isGone ? .secondary : .primary)
                 }
-                .font(.body.weight(.medium))
                 if let s = p.snoozedTo {
-                    Text(s == "someday" ? "Moved to later" : "Moved to \(BrainDate.due(s, nil) ?? s)").font(.caption).foregroundStyle(.secondary)
-                } else if let why = p.why, !isDone {
-                    Text(why).font(.caption).foregroundStyle(.secondary)
-                }
-                if let step = p.firstStep, !isDone, !p.isGone {
-                    Label { Text("**Start:** \(step)") } icon: { Image(systemName: "shoeprints.fill") }
-                        .font(.caption).foregroundStyle(.green)
+                    Text(s == "someday" ? "Moved to later" : "Moved to \(BrainDate.due(s, nil) ?? s)")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                } else if !isDone {
+                    if let step = p.firstStep {
+                        Text("Start: \(step)").font(.subheadline).foregroundStyle(.secondary)
+                    } else if let why = p.why {
+                        Text(why.prefix(1).uppercased() + why.dropFirst()).font(.subheadline).foregroundStyle(.secondary)
+                    }
                 }
             }
             Spacer(minLength: 0)
@@ -245,78 +241,52 @@ private struct NeedsYouSection: View {
     var body: some View {
         Section {
             ForEach(a.reviews) { r in
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     NavigationLink(value: Route.event(r.event.id)) {
                         HStack(alignment: .top, spacing: 12) {
-                            AvatarView(name: r.event.sender, photo: r.event.photo, size: 34)
+                            AvatarView(name: r.event.sender, photo: r.event.photo, size: 36)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(r.titles.joined(separator: ", ").nonEmpty ?? "Check this message").font(.body.weight(.medium))
-                                Text("\(r.event.sender ?? "?"): “\(r.event.text)”").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                                Text(r.titles.joined(separator: ", ").nonEmpty ?? "Check this message")
+                                Text("\(r.event.sender ?? "?"): “\(r.event.text)”")
+                                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                             }
                         }
                     }
-                    HStack {
+                    HStack(spacing: 10) {
                         if !r.titles.isEmpty {
                             Button("Add") { Task { await app.run("Added") { try await $0.eventAction("approve", r.event.id) } } }
-                                .buttonStyle(.glassProminent).tint(.green)
+                                .buttonStyle(.borderedProminent).tint(.green)
                         }
                         Button("Skip") { Task { await app.run("Skipped") { try await $0.eventAction("reject", r.event.id) } } }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.bordered)
                     }
-                    .padding(.leading, 46)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+                    .padding(.leading, 48)
                 }
+                .padding(.vertical, 2)
             }
-            ForEach(a.followups) { it in
-                AttentionItemRow(item: it, symbol: "hourglass", title: "Follow up with \(it.person ?? "them")",
-                                 subtitle: it.title + (BrainDate.due(it.due, nil).map { " · expected \($0)" } ?? ""))
-            }
-            ForEach(a.late) { it in
-                AttentionItemRow(item: it, symbol: "handshake", title: it.title,
-                                 subtitle: "You promised \(it.person ?? "someone")" + (BrainDate.due(it.due, nil).map { " · was due \($0)" } ?? ""))
-            }
+            ForEach(a.followups) { it in ReminderRow(item: it) }
+            ForEach(a.late) { it in ReminderRow(item: it) }
             if a.failed > 0 {
                 NavigationLink(value: Route.activity(status: "failed")) {
                     Label {
-                        VStack(alignment: .leading) {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text("\(a.failed) message\(a.failed == 1 ? "" : "s") couldn't be processed")
-                            Text("Tap to look — Retry usually fixes it").font(.caption).foregroundStyle(.secondary)
+                            Text("Retry usually fixes it").font(.subheadline).foregroundStyle(.secondary)
                         }
                     } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red) }
                 }
             }
         } header: {
-            HStack { Text("Needs you"); Spacer(); Text("\(a.count)").foregroundStyle(.secondary) }
+            HeaderRow("Needs You", detail: "\(a.count)")
         }
+        .headerProminence(.increased)
     }
 }
 
-private struct AttentionItemRow: View {
-    @Environment(AppModel.self) private var app
-    let item: Item
-    let symbol: String
-    let title: String
-    let subtitle: String
-    @State private var done = false
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                done = true
-                let id = item.id
-                Task { if !(await app.run("Done") { try await $0.setDone(id, true) }) { done = false } }
-            } label: { CheckCircle(on: done) }
-            .buttonStyle(.plain)
-            NavigationLink(value: Route.event(item.originEventId ?? "")) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Label(title, systemImage: symbol).font(.body.weight(.medium))
-                    Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
-                }
-            }
-        }
-        .itemActions(ItemRef(item))
-    }
-}
-
+/// A dated thing: calendar-colored bar, title, "Tomorrow, 3:15 PM · Family". Your own iCloud
+/// reminders get a check circle.
 struct AgendaRow: View {
     @Environment(AppModel.self) private var app
     let u: AgendaEntry
@@ -324,29 +294,25 @@ struct AgendaRow: View {
 
     var body: some View {
         let when = BrainDate.parse(u.when) ?? Date()
-        let tile = BrainDate.tile(when)
         let row = HStack(spacing: 12) {
-            VStack(spacing: 0) {
-                Text(u.late ? "Late" : tile.top).font(.caption2.weight(.semibold)).foregroundStyle(Color.red.opacity(u.late ? 1 : 0.85))
-                    .textCase(.uppercase)
-                Text(tile.day).font(.system(size: 22, weight: .semibold, design: .rounded))
-            }
-            .frame(width: 44)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    if u.external { Circle().fill(Color(hex: u.color) ?? .gray).frame(width: 8, height: 8) }
-                    Text(u.title).font(.body.weight(.medium)).strikethrough(ticked).lineLimit(2)
-                }
-                Text(meta(when)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer(minLength: 0)
             if u.external && u.kind == "reminder", let apple = u.appleId {
                 Button {
                     ticked = true
                     Task { if !(await app.run("Done") { try await $0.externalDone(apple) }) { ticked = false } }
-                } label: { CheckCircle(on: ticked) }
-                .buttonStyle(.plain)
+                } label: {
+                    Image(systemName: ticked ? "largecircle.fill.circle" : "circle")
+                        .font(.title3).foregroundStyle(ticked ? Color.accentColor : (Color(hex: u.color) ?? .secondary))
+                }
+                .buttonStyle(.borderless)
+            } else {
+                RoundedRectangle(cornerRadius: 2).fill(Color(hex: u.color) ?? (u.kind == "event" ? .red : .blue))
+                    .frame(width: 4, height: 34)
             }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(u.title).strikethrough(ticked).lineLimit(2)
+                Text(meta(when)).font(.subheadline).foregroundStyle(u.late ? Color.red : Color.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
         }
         if let ev = u.eventId, !u.external {
             NavigationLink(value: Route.event(ev)) { row }
@@ -358,7 +324,8 @@ struct AgendaRow: View {
 
     private func meta(_ when: Date) -> String {
         var parts: [String] = []
-        if !u.allDay { parts.append(BrainDate.time(when)) }
+        let day = u.late ? "Overdue" : BrainDate.niceDay(when)
+        parts.append(u.allDay ? day : "\(day), \(BrainDate.time(when))")
         if let w = u.where { parts.append(w) }
         if let l = u.location { parts.append(l) }
         if let who = u.who, who != "Me" { parts.append(who) }
@@ -372,13 +339,14 @@ private struct RecentRow: View {
     var body: some View {
         let st = style
         NavigationLink(value: Route.event(r.eventId ?? "")) {
-            HStack(spacing: 12) {
-                IconTile(symbol: st.0, color: st.1, size: 28)
-                VStack(alignment: .leading, spacing: 1) {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
                     (Text(r.verb + " ").foregroundStyle(.secondary) + Text(r.title)).lineLimit(1)
                     Text([r.person, r.via.map { "in \($0)" }, BrainDate.ago(r.at)].compactMap { $0 }.joined(separator: " · "))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
+            } icon: {
+                Image(systemName: st.0).foregroundStyle(st.1)
             }
         }
         .disabled(r.eventId == nil)
@@ -386,14 +354,14 @@ private struct RecentRow: View {
 
     private var style: (String, Color) {
         switch r.verb {
-        case "Done": return ("checkmark", .green)
-        case "Cancelled", "Deleted": return ("xmark", .red)
-        case "Undid": return ("arrow.uturn.backward", .gray)
-        case "Changed": return ("pencil", .brown)
+        case "Done": return ("checkmark.circle.fill", .green)
+        case "Cancelled", "Deleted": return ("xmark.circle.fill", .red)
+        case "Undid": return ("arrow.uturn.backward.circle.fill", .gray)
+        case "Changed": return ("pencil.circle.fill", .orange)
         default:
-            if r.collection == "gift_ideas" { return ("gift", .orange) }
-            if r.collection != nil { return ("bookmark", .orange) }
-            return r.kind == "event" ? ("calendar", .red) : ("checklist", .blue)
+            if r.collection == "gift_ideas" { return ("gift.fill", .orange) }
+            if r.collection != nil { return ("bookmark.fill", .orange) }
+            return r.kind == "event" ? ("calendar", .red) : ("plus.circle.fill", .blue)
         }
     }
 }

@@ -8,7 +8,7 @@ struct ReviewView: View {
         Loader({ try await $0.review() }) { entries in
             List {
                 if entries.isEmpty {
-                    ContentUnavailableView("All caught up", systemImage: "checkmark.circle",
+                    ContentUnavailableView("All Caught Up", systemImage: "checkmark.circle",
                                            description: Text("Anything the model isn't sure about waits here for a yes or no."))
                 }
                 ForEach(entries) { e in ReviewCard(e: e) }
@@ -30,27 +30,27 @@ private struct ReviewCard: View {
             ForEach(e.proposals) { p in
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(p.title).font(.body.weight(.medium))
-                        Text(describe(p)).font(.caption).foregroundStyle(.secondary)
+                        Text(p.title)
+                        if !describe(p).isEmpty { Text(describe(p)).font(.subheadline).foregroundStyle(.secondary) }
                     }
                 } icon: {
-                    Image(systemName: p.op == "create_event" ? "calendar" : p.collection != nil ? "bookmark" : "checklist")
-                        .foregroundStyle(p.op == "create_event" ? .red : .green)
+                    Image(systemName: p.op == "create_event" ? "calendar" : p.collection != nil ? "bookmark" : "circle")
+                        .foregroundStyle(p.op == "create_event" ? Color.red : p.collection != nil ? Color.orange : Color.secondary)
                 }
             }
-            if !e.reasons.isEmpty {
-                Label(e.reasons.joined(separator: "\n"), systemImage: "info.circle")
-                    .font(.caption).foregroundStyle(.orange)
-            }
-            HStack {
+            HStack(spacing: 10) {
                 if !e.proposals.isEmpty {
-                    Button { act("approve", "Added") } label: { Label("Add", systemImage: "checkmark").frame(maxWidth: .infinity) }
-                        .buttonStyle(.glassProminent).tint(.green)
+                    Button { act("approve", "Added") } label: { Text("Add").frame(maxWidth: .infinity) }
+                        .buttonStyle(.borderedProminent).tint(.green)
                 }
-                Button { act("reject", "Skipped") } label: { Label("Skip", systemImage: "xmark").frame(maxWidth: .infinity) }
-                    .buttonStyle(.glass)
+                Button { act("reject", "Skipped") } label: { Text("Skip").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered)
             }
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
             .disabled(busy)
+        } footer: {
+            if !e.reasons.isEmpty { Text(e.reasons.joined(separator: "\n")) }
         }
     }
 
@@ -65,107 +65,62 @@ private struct ReviewCard: View {
 
     private func describe(_ p: Proposal) -> String {
         var parts: [String] = []
-        if let c = p.collection { parts.append(c) } else if let l = p.list { parts.append(l) }
         if let s = BrainDate.parse(p.start) {
             parts.append(p.allDay ? BrainDate.niceDay(s) : "\(BrainDate.niceDay(s)), \(BrainDate.time(s))")
         } else if let d = BrainDate.due(p.due, p.dueTime) {
-            parts.append("due \(d)")
+            parts.append(d)
         }
+        if let c = p.collection { parts.append(c) } else if let l = p.list { parts.append(l) }
         if let who = p.person { parts.append(who) }
         return parts.joined(separator: " · ")
     }
 }
 
-// MARK: - Activity
+// MARK: - Activity (Mail-style)
 
 struct ActivityView: View {
     var initialStatus: String?
     @State private var status: String?
     @State private var query = ""
     @State private var debounced = ""
+    @State private var statuses: [Activity.StatusOption] = []
+    @State private var appeared = false
 
     var body: some View {
         Loader({ [status, debounced] api in try await api.activity(query: debounced, status: status) }) { a in
             List {
-                Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack {
-                            chip(nil, "All", a.counts.values.reduce(0, +))
-                            ForEach(a.statuses) { s in
-                                if let n = a.counts[s.key], n > 0 { chip(s.key, s.label, n) }
-                            }
-                        }
-                    }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                }
                 if a.events.isEmpty {
-                    ContentUnavailableView.search(text: debounced)
+                    if debounced.isEmpty { ContentUnavailableView("No Messages", systemImage: "tray") }
+                    else { ContentUnavailableView.search(text: debounced) }
                 }
                 ForEach(a.events) { m in
                     NavigationLink(value: Route.event(m.id)) { MessageRow(m: m) }
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.plain)
+            .onAppear { statuses = a.statuses.filter { (a.counts[$0.key] ?? 0) > 0 } }
         }
         .id("\(status ?? "")|\(debounced)")
-        .navigationTitle("Activity")
+        .navigationTitle(status.flatMap { s in statuses.first { $0.key == s }?.label } ?? "Activity")
         .searchable(text: $query, prompt: "Search messages")
         .task(id: query) {
             try? await Task.sleep(for: .milliseconds(350))
             if !Task.isCancelled { debounced = query }
         }
-        .onAppear { if status == nil { status = initialStatus } }
-    }
-
-    private func chip(_ key: String?, _ label: String, _ n: Int) -> some View {
-        Button { status = key } label: {
-            Text("\(label) \(n)").font(.subheadline.weight(.medium))
-                .padding(.horizontal, 12).padding(.vertical, 7)
-        }
-        .buttonStyle(.plain)
-        .glassEffect(status == key ? .regular.tint(.blue).interactive() : .regular.interactive(), in: .capsule)
-        .foregroundStyle(status == key ? Color.white : Color.primary)
-    }
-}
-
-struct MessageRow: View {
-    let m: Message
-    var showStatus = true
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            if m.source == "mail" {
-                AvatarView(name: m.sender, size: 38, symbol: "envelope.fill")
-            } else if m.source == "capture" {
-                AvatarView(name: "Me", size: 38, symbol: "plus.bubble.fill")
-            } else if m.fromMe {
-                AvatarView(name: "Me", size: 38, symbol: "arrowshape.turn.up.left.fill")
-            } else {
-                AvatarView(name: m.sender, photo: m.photo, size: 38)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text(m.source == "capture" ? "Quick capture" : (m.fromMe ? "You → " : "") + (m.sender ?? "?"))
-                        .font(.headline).lineLimit(1)
-                    Spacer()
-                    Text(BrainDate.ago(m.receivedAt)).font(.caption).foregroundStyle(.secondary)
-                }
-                Text((m.subject.map { "\($0) — " } ?? "") + m.text).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-                if !m.actions.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(Array(m.actions.prefix(3).enumerated()), id: \.offset) { _, a in
-                            Pill(text: a.title, color: a.type == "create_event" ? .red : .green)
-                        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("Show", selection: $status) {
+                        Text("All Messages").tag(String?.none)
+                        ForEach(statuses) { s in Text(s.label).tag(Optional(s.key)) }
                     }
+                } label: {
+                    Image(systemName: status == nil ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
                 }
-                if showStatus && m.status != "done" {
-                    Label(m.statusLabel + (m.reason.map { " · \($0.replacingOccurrences(of: "_", with: " "))" } ?? ""),
-                          systemImage: Symbols.status(m.status).0)
-                        .font(.caption).foregroundStyle(Symbols.status(m.status).1).lineLimit(2)
-                }
+                .accessibilityLabel("Filter")
             }
         }
+        .onAppear { if !appeared { status = initialStatus; appeared = true } }
     }
 }
 
@@ -196,114 +151,122 @@ private struct EventDetailList: View {
                 HStack(alignment: .top, spacing: 12) {
                     AvatarView(name: m.sender, photo: m.photo, size: 44,
                                symbol: m.source == "mail" ? "envelope.fill" : m.source == "capture" ? "plus.bubble.fill" : nil)
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(m.source == "capture" ? "Quick capture" : (m.fromMe ? "You → " : "") + (m.sender ?? "?")).font(.headline)
-                            Spacer()
-                            Label(m.statusLabel, systemImage: Symbols.status(m.status).0)
-                                .font(.caption.weight(.semibold)).foregroundStyle(Symbols.status(m.status).1)
-                        }
-                        if let s = m.subject { Text(s).font(.subheadline.weight(.semibold)) }
-                        Text(m.text).textSelection(.enabled)
-                        Text(BrainDate.parse(m.receivedAt).map { "\(BrainDate.niceDay($0)), \(BrainDate.time($0))" } ?? "")
-                            .font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(m.source == "capture" ? "Quick capture" : (m.fromMe ? "You → " : "") + (m.sender ?? "?"))
+                            .font(.headline)
+                        Text(BrainDate.parse(m.receivedAt).map { "\(BrainDate.niceDay($0)) at \(BrainDate.time($0))" } ?? "")
+                            .font(.subheadline).foregroundStyle(.secondary)
                     }
+                    Spacer()
+                    Label(m.statusLabel, systemImage: Symbols.status(m.status).0)
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(Symbols.status(m.status).1)
+                        .font(.title3)
+                        .accessibilityLabel(m.statusLabel)
                 }
+                if let s = m.subject { Text(s).font(.headline) }
+                Text(m.text).textSelection(.enabled)
                 if !d.context.isEmpty {
-                    DisclosureGroup("Earlier in the chat (\(d.context.count))") {
+                    DisclosureGroup("Earlier in the chat") {
                         ForEach(Array(d.context.enumerated()), id: \.offset) { _, c in
-                            Text(c).font(.caption).foregroundStyle(.secondary)
+                            Text(c).font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
                 }
             }
 
-            if !d.reasons.isEmpty || !d.proposals.isEmpty {
-                Section("Waiting for you") {
-                    ForEach(d.proposals) { p in Label(p.title, systemImage: p.op == "create_event" ? "calendar" : "checklist") }
-                    ForEach(d.reasons, id: \.self) { r in Label(r, systemImage: "info.circle").font(.caption).foregroundStyle(.orange) }
-                    if d.can.approve || d.can.reject {
-                        HStack {
-                            if d.can.approve {
-                                Button { act("approve", "Added") } label: { Label("Add", systemImage: "checkmark").frame(maxWidth: .infinity) }
-                                    .buttonStyle(.glassProminent).tint(.green)
-                            }
-                            if d.can.reject {
-                                Button { act("reject", "Skipped") } label: { Label("Skip", systemImage: "xmark").frame(maxWidth: .infinity) }
-                                    .buttonStyle(.glass)
-                            }
+            if d.can.approve || d.can.reject {
+                Section {
+                    ForEach(d.proposals) { p in
+                        Label(p.title, systemImage: p.op == "create_event" ? "calendar" : "circle")
+                    }
+                    HStack(spacing: 10) {
+                        if d.can.approve {
+                            Button { act("approve", "Added") } label: { Text("Add").frame(maxWidth: .infinity) }
+                                .buttonStyle(.borderedProminent).tint(.green)
+                        }
+                        if d.can.reject {
+                            Button { act("reject", "Skipped") } label: { Text("Skip").frame(maxWidth: .infinity) }
+                                .buttonStyle(.bordered)
                         }
                     }
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                } header: {
+                    HeaderRow("Waiting for You")
+                } footer: {
+                    if !d.reasons.isEmpty { Text(d.reasons.joined(separator: "\n")) }
                 }
+                .headerProminence(.increased)
             }
 
             if !d.items.isEmpty {
-                Section("What it made") {
-                    ForEach(d.items) { it in ItemLine(item: it).itemActions(ItemRef(it)) }
+                Section {
+                    ForEach(d.items) { it in ReminderRow(item: it) }
+                } header: {
+                    HeaderRow("What It Made")
                 }
+                .headerProminence(.increased)
             }
 
             if let r = d.reasoning, !r.isEmpty {
-                Section("Why") { Text(r).font(.subheadline) }
+                Section("Why") { Text(r) }
             }
 
             Section {
                 ForEach(d.trace) { t in
-                    HStack(alignment: .firstTextBaseline) {
-                        Image(systemName: icon(t.step)).foregroundStyle(color(t.step)).frame(width: 22)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(t.label).font(.subheadline.weight(.semibold))
-                            if let s = t.summary, !s.isEmpty { Text(s).font(.caption).foregroundStyle(.secondary) }
+                    Label {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(t.label)
+                                if let s = t.summary, !s.isEmpty { Text(s).font(.subheadline).foregroundStyle(.secondary) }
+                            }
+                            Spacer()
+                            if let ms = t.durationMs { Text("\(ms) ms").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary) }
                         }
-                        Spacer()
-                        if let ms = t.durationMs { Text("\(ms) ms").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                    } icon: {
+                        Image(systemName: icon(t.step)).foregroundStyle(color(t.step))
                     }
                 }
             } header: {
-                HStack {
-                    Text("Trace")
-                    Spacer()
-                    let total = d.trace.compactMap(\.durationMs).reduce(0, +)
-                    Text("\(d.trace.count) steps" + (total > 0 ? " · \(total) ms" : "") + (d.promptVersion.map { " · \($0)" } ?? ""))
-                        .textCase(nil)
-                }
+                Text("How It Was Handled")
+            } footer: {
+                let total = d.trace.compactMap(\.durationMs).reduce(0, +)
+                Text("\(d.trace.count) steps" + (total > 0 ? " · \(total) ms" : "") + (d.promptVersion.map { " · \($0)" } ?? ""))
             }
 
             if !d.commands.isEmpty {
                 Section("Sent to the Mac") {
                     ForEach(d.commands) { c in
-                        HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(c.title ?? c.op.replacingOccurrences(of: "_", with: " ")).lineLimit(1)
+                                Spacer()
+                                Text(c.status.capitalized).font(.subheadline)
+                                    .foregroundStyle(c.status == "done" ? Color.green : c.status == "failed" ? Color.red : Color.secondary)
+                            }
                             Text(c.op.replacingOccurrences(of: "_", with: " ") + (c.undo ? " (undo)" : ""))
-                                .font(.subheadline)
-                            if let t = c.title { Text(t).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
-                            Spacer()
-                            Pill(text: c.status, color: c.status == "done" ? .green : c.status == "failed" ? .red : .blue)
+                                .font(.subheadline).foregroundStyle(.secondary)
+                            if let e = c.error { Text(e).font(.subheadline).foregroundStyle(.red) }
                         }
-                        if let e = c.error { Text(e).font(.caption).foregroundStyle(.red) }
                     }
                 }
             }
             if let err = d.lastError {
-                Section("Last error") { Text(err).font(.caption.monospaced()).foregroundStyle(.red) }
+                Section("Last Error") { Text(err).font(.footnote.monospaced()).foregroundStyle(.red) }
             }
         }
         .listStyle(.insetGrouped)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    if d.can.approve {
-                        Button { act("approve", "Added") } label: { Label("Add to Reminders", systemImage: "checkmark") }
-                    }
-                    if d.can.reject {
-                        Button { act("reject", "Skipped") } label: { Label("Skip", systemImage: "xmark") }
-                    }
                     if d.can.undo {
-                        Button(role: .destructive) { confirmUndo = true } label: { Label("Undo everything", systemImage: "arrow.uturn.backward") }
+                        Button(role: .destructive) { confirmUndo = true } label: { Label("Undo Everything", systemImage: "arrow.uturn.backward") }
                     }
                     if d.can.retry {
                         Button { act("retry", "Reprocessing") } label: { Label("Retry", systemImage: "arrow.clockwise") }
                     }
-                    Button { editing = true } label: { Label("Edit & reprocess", systemImage: "pencil") }
+                    Button { editing = true } label: { Label("Edit & Reprocess", systemImage: "pencil") }
                 } label: {
                     Label("Actions", systemImage: "ellipsis")
                 }
@@ -342,8 +305,7 @@ private struct EventDetailList: View {
     private func color(_ step: String) -> Color {
         switch step {
         case "extract_error": return .red
-        case "review": return .orange
-        case "undo": return .orange
+        case "review", "undo": return .orange
         case "command_result": return .green
         default: return .blue
         }
@@ -364,7 +326,7 @@ private struct EditExtractionSheet: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .padding(.horizontal)
-                .navigationTitle("Edit extraction")
+                .navigationTitle("Edit Extraction")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel", role: .cancel) { dismiss() } }
