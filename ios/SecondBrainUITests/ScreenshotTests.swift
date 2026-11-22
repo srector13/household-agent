@@ -161,8 +161,9 @@ final class ScreenshotTests: XCTestCase {
     private func tab(_ app: XCUIApplication, _ name: String) {
         var b = app.tabBars.buttons[name]
         if !b.waitForExistence(timeout: 3) {
-            // the tab bar collapses while scrolling: scroll back up to bring it back
-            app.swipeDown(); app.swipeDown()
+            // The tab bar collapses to one icon while scrolling: tap it to expand, or scroll back up.
+            let visible = app.tabBars.buttons.firstMatch
+            if visible.exists { visible.tap() } else { app.swipeDown(); app.swipeDown() }
             b = app.tabBars.buttons[name]
         }
         if b.waitForExistence(timeout: 5) { b.tap() } else if app.buttons[name].firstMatch.exists { app.buttons[name].firstMatch.tap() }

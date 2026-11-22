@@ -47,6 +47,7 @@ struct ItemActions: ViewModifier {
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) { Task { await delete() } } label: { Label("Delete", systemImage: "trash") }
+                        .tint(.red)
                     Button { Task { await later() } } label: {
                         Label(ref.isReminder ? "Later" : "Move", systemImage: "clock")
                     }

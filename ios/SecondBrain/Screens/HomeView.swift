@@ -116,10 +116,11 @@ private struct NextUpCard: View {
             VStack(spacing: 0) {
                 Text(at.map { BrainDate.time($0).replacingOccurrences(of: " AM", with: "").replacingOccurrences(of: " PM", with: "") } ?? "")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.6)
                 Text(at.map { BrainDate.time($0).hasSuffix("PM") ? "PM" : "AM" } ?? "")
                     .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
-            .frame(width: 66)
+            .frame(width: 72)
             RoundedRectangle(cornerRadius: 2).fill(accent).frame(width: 4)
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(n.ongoing ? "Happening now" : "Up next") · \(n.inLabel)")
