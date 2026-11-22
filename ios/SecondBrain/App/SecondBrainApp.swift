@@ -15,6 +15,7 @@ struct SecondBrainApp: App {
             RootView()
                 .environment(app)
                 .tint(.blue)
+                .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-SecondBrainDark") ? .dark : nil)
                 .onOpenURL { app.open(link: $0.absoluteString) }
                 .task {
                     Notifier.shared.onOpen = { [app] link in app.open(link: link) }

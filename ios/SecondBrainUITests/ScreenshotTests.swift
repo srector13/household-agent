@@ -72,14 +72,16 @@ final class ScreenshotTests: XCTestCase {
         tab(app, "Lists")
         sleep(2)
         shot("11-lists")
-        let cell = app.cells.element(boundBy: 0)
+        let cell = app.staticTexts["Do our taxes"].firstMatch
         if cell.waitForExistence(timeout: 5) {
             cell.swipeLeft()
             sleep(1)
             shot("12-lists-swipe")
             app.tap()
         }
-        if tap(app.buttons["Collections"]) { sleep(2); shot("13-collections") }
+        if tap(app.segmentedControls.buttons["Collections"].firstMatch) || tap(app.buttons["Collections"].firstMatch) {
+            sleep(2); shot("13-collections")
+        }
 
         // 7. Review.
         tab(app, "Review")
@@ -109,12 +111,16 @@ final class ScreenshotTests: XCTestCase {
             sleep(1)
         }
 
-        // 9. Dark mode Home.
-        XCUIDevice.shared.appearance = .dark
-        tab(app, "Home")
+        // 9. Dark mode.
+        app.terminate()
+        app.launchArguments = ["-SecondBrainServer", server, "-SecondBrainScreenshots", "-SecondBrainDark"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Today"].waitForExistence(timeout: 30))
         sleep(2)
         shot("24-home-dark")
-        XCUIDevice.shared.appearance = .light
+        tab(app, "Lists")
+        sleep(2)
+        shot("25-lists-dark")
     }
 
     // MARK: helpers
