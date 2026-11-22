@@ -55,7 +55,9 @@ def test_no_purple_anywhere(client):
     css = client.get("/static/app.css").text.lower()
     for bad in ("purple", "indigo", "#5856d6", "#af52de", "#bf5af2", "#5e5ce6", "#7d7aff", "88,86,214"):
         assert bad not in css, bad
+    import colorsys
     svg = client.get("/static/icons/icon.svg").text.lower()
     for hexcol in re.findall(r"#[0-9a-f]{6}", svg):
-        r, g, b = (int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
-        assert not (b > g and r > g * 0.8 and r > 90), f"purple-ish {hexcol} in icon"
+        r, g, b = (int(hexcol[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        h, s, _v = colorsys.rgb_to_hsv(r, g, b)
+        assert not (250 <= h * 360 <= 335 and s > 0.2), f"purple-ish {hexcol} in icon"
