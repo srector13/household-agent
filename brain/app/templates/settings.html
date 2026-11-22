@@ -2,7 +2,7 @@
 {% set v = s["values"] %}
 {% block title %}Settings · Household Agent{% endblock %}
 {% block heading %}Settings{% endblock %}
-{% block subheading %}<div class="sub">Changes apply immediately — no restart. Saved in the brain's database on top of config.yaml.</div>{% endblock %}
+{% block subheading %}<div class="sub">Changes apply right away — no restart needed.</div>{% endblock %}
 
 {% macro src(path) %}<span class="src" data-src="{{ path }}"></span>{% endmacro %}
 {% macro text(path, label, help="", type="text", attrs="") %}
@@ -39,14 +39,14 @@
 {% block content %}
 <div class="settings">
   <nav class="subnav">
-    <a href="#people">{{ icon("users", 16) }}People & chats</a>
-    <a href="#reminders">{{ icon("check-square", 16) }}Reminders & calendar</a>
-    <a href="#collections">{{ icon("bookmark", 16) }}Collections</a>
-    <a href="#daily">{{ icon("sun", 16) }}Daily rhythm</a>
-    <a href="#model">{{ icon("sparkles", 16) }}Model</a>
-    <a href="#alerts">{{ icon("bell", 16) }}Alerts & dashboard</a>
-    <a href="#mail">{{ icon("mail", 16) }}Mail</a>
-    <a href="#general">{{ icon("globe", 16) }}General</a>
+    <a href="#people"><span class="tile t-green">{{ icon("users") }}</span>People & chats</a>
+    <a href="#reminders"><span class="tile t-blue">{{ icon("check-square") }}</span>Reminders & calendar</a>
+    <a href="#collections"><span class="tile t-purple">{{ icon("bookmark") }}</span>Collections</a>
+    <a href="#daily"><span class="tile t-orange">{{ icon("sun") }}</span>Daily rhythm</a>
+    <a href="#model"><span class="tile t-indigo">{{ icon("sparkles") }}</span>Model</a>
+    <a href="#alerts"><span class="tile t-red">{{ icon("bell") }}</span>Alerts & dashboard</a>
+    <a href="#mail"><span class="tile t-blue">{{ icon("mail") }}</span>Mail</a>
+    <a href="#general"><span class="tile t-gray">{{ icon("globe") }}</span>General</a>
   </nav>
 
   <div class="stack">
@@ -139,7 +139,8 @@
       <div class="card-b fields">
         <div class="full">{{ secret("alerts.discord_webhook_url", "Discord webhook URL", "Server Settings → Integrations → Webhooks.") }}</div>
         {{ text("alerts.heartbeat_timeout_s", "Mac offline after (seconds)", "No heartbeat for this long → alert.", "number", 'min="60" max="3600"') }}
-        {{ text("dashboard.public_url", "Dashboard URL", "Used for links in alerts (Tailscale name).", "url") }}
+        {{ text("dashboard.public_url", "Dashboard URL", "Used for links in alerts and as the app's address (use the https:// Tailscale name).", "url") }}
+        {{ text("dashboard.app_name", "App name", "Shown under the home-screen icon — e.g. \"Second Brain\". Re-add to Home Screen to update it.") }}
       </div>
       {{ foot("alerts") }}
     </form>
@@ -210,7 +211,7 @@ function paintSources() {
   });
 }
 async function clearSecret(path) {
-  if (!confirm("Clear this saved value?")) return;
+  if (!(await HA.confirm("Clear this saved value?", "Clear", { destructive: true }))) return;
   const body = {}; setPath(body, path, null);
   try { await patch(body, "Cleared"); setTimeout(() => location.reload(), 400); } catch (e) { HA.toast(e.message, "bad"); }
 }
@@ -225,22 +226,25 @@ function renderPeople() {
     const row = document.createElement("div");
     row.className = "person" + (p.enabled === false ? " off" : "");
     row.innerHTML = `<span class="avatar"></span><div style="min-width:0"><div class="name"></div><div class="h"></div></div>
-      <div class="acts"><button class="btn sm ghost me-btn" title="Mark as my own number (notes-to-self)">Me</button><label class="switch" title="Watching"><input type="checkbox"><span class="track"></span></label>
-      <button class="btn sm icon ghost" title="Rename">{{ icon("pencil", 14) }}</button>
-      <button class="btn sm icon ghost danger" title="Remove">{{ icon("trash", 14) }}</button></div>`;
+      <div class="acts"><label class="switch" title="Watching"><input type="checkbox"><span class="track"></span></label>
+      <button class="btn sm icon ghost more" title="More">{{ icon("more", 20) }}</button></div>`;
     row.querySelector(".avatar").textContent = p.is_me ? "✎" : p.chat_id ? "#" : initials(p.label);
-    const meBtn = row.querySelector(".me-btn");
-    meBtn.textContent = p.is_me ? "📝 Notes to self" : "This is me";
-    meBtn.classList.toggle("primary", !!p.is_me);
-    meBtn.onclick = () => savePeople(PEOPLE.map((q, j) => ({ ...q, is_me: j === i ? !p.is_me : q.is_me })),
-      p.is_me ? "No longer your notes-to-self thread" : `${p.label || "This"} is your notes-to-self thread`);
+    row.querySelector(".more").onclick = async () => {
+      const pick = await HA.choose(p.label || p.handle || p.chat_id, [
+        { key: "rename", label: "Rename" },
+        { key: "me", label: p.is_me ? "Not my notes-to-self thread" : "This is me (notes to self)" },
+        { key: "remove", label: "Stop Watching", destructive: true },
+      ]);
+      if (pick === "rename") { const n = prompt("Name", p.label || ""); if (n !== null && n.trim()) savePeople(PEOPLE.map((q, j) => (j === i ? { ...q, label: n.trim() } : q)), "Renamed"); }
+      if (pick === "me") savePeople(PEOPLE.map((q, j) => ({ ...q, is_me: j === i ? !p.is_me : q.is_me })),
+        p.is_me ? "No longer your notes-to-self thread" : `${p.label || "This"} is your notes-to-self thread`);
+      if (pick === "remove" && await HA.confirm(`Stop watching ${p.label || p.handle}? Their messages will be ignored.`, "Stop Watching", { destructive: true }))
+        savePeople(PEOPLE.filter((_, j) => j !== i), `Removed ${p.label || ""}`);
+    };
     row.querySelector(".name").textContent = p.label || "(no name)";
-    row.querySelector(".h").textContent = p.handle || p.chat_id;
+    row.querySelector(".h").textContent = (p.is_me ? "📝 Notes to self · " : "") + (p.handle || p.chat_id);
     const cb = row.querySelector("input"); cb.checked = p.enabled !== false;
     cb.onchange = () => savePeople(PEOPLE.map((q, j) => (j === i ? { ...q, enabled: cb.checked } : q)), cb.checked ? `Watching ${p.label}` : `Paused ${p.label}`);
-    const [, ren, del] = row.querySelectorAll("button");
-    ren.onclick = () => { const n = prompt("Name", p.label || ""); if (n !== null) savePeople(PEOPLE.map((q, j) => (j === i ? { ...q, label: n } : q)), "Renamed"); };
-    del.onclick = () => { if (confirm(`Stop watching ${p.label || p.handle}?`)) savePeople(PEOPLE.filter((_, j) => j !== i), `Removed ${p.label || ""}`); };
     box.append(row);
   });
 }
@@ -374,7 +378,7 @@ function renderCollections() {
       c.enabled = row.querySelector(".en").checked; c.label = row.querySelector(".lb").value;
       c.list = row.querySelector(".ls").value; c.description = row.querySelector(".ds").value;
       c.group_by_person = row.querySelector(".gp").checked; colDirty(); }));
-    row.querySelector("button").onclick = () => { if (confirm(`Remove “${c.label}”? Items already saved stay in Reminders.`)) { COLS.splice(i, 1); renderCollections(); colDirty(); } };
+    row.querySelector("button").onclick = async () => { if (await HA.confirm(`Remove “${c.label}”? Items already saved stay in Reminders.`, "Remove Collection", { destructive: true })) { COLS.splice(i, 1); renderCollections(); colDirty(); } };
     if (!c.enabled) row.style.opacity = ".6";
     box.append(row);
   });

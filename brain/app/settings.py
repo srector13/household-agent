@@ -33,7 +33,7 @@ EDITABLE: dict[str, Any] = {
               "person_tags": True, "track_promises": True, "waiting_list": True, "waiting_default_days": True, "breakdown": True,
               "calendars": {"default": True, "default_duration_min": True, "alert_minutes_before": True}},
     "alerts": {"discord_webhook_url": True, "heartbeat_timeout_s": True},
-    "dashboard": {"public_url": True},
+    "dashboard": {"public_url": True, "app_name": True},
     "collections": True,
     "daily": {"enabled": True, "morning_time": True, "evening_time": True, "count": True, "today_view": True,
               "discord": True},

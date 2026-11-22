@@ -181,12 +181,17 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
 
     @app.middleware("http")
     async def same_origin_writes(request: Request, call_next):
-        """Dashboard writes must come from the dashboard itself (blocks cross-site form posts)."""
+        """Dashboard writes must come from the dashboard itself (blocks cross-site form posts).
+
+        Behind a reverse proxy (e.g. `tailscale serve` for HTTPS) the Host header may be rewritten,
+        so the forwarded host and the configured dashboard URL count as "us" too.
+        """
         if request.method not in ("GET", "HEAD", "OPTIONS") and not request.url.path.startswith(AGENT_PATHS):
             site = request.headers.get("sec-fetch-site")
             origin = request.headers.get("origin")
-            if site == "cross-site" or (origin and origin != "null"
-                                        and urlparse(origin).netloc != request.headers.get("host")):
+            ours = {request.headers.get("host"), request.headers.get("x-forwarded-host"),
+                    urlparse(cfg.dashboard.public_url).netloc}
+            if site == "cross-site" or (origin and origin != "null" and urlparse(origin).netloc not in ours):
                 return JSONResponse({"error": "cross-origin request blocked"}, status_code=403)
         return await call_next(request)
 
@@ -514,9 +519,40 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         app.add_api_route(old, (lambda n: (lambda: RedirectResponse(n, status_code=301)))(new),
                           methods=["GET"], include_in_schema=False)
 
-    @app.get("/favicon.ico")
+    # ---- PWA -----------------------------------------------------------------------------------
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    async def manifest():
+        name = cfg.dashboard.app_name
+        return JSONResponse({
+            "name": name, "short_name": name if len(name) <= 12 else name.split()[0],
+            "description": "Household agent: messages → Reminders & Calendar, with a daily plan.",
+            "id": "/", "start_url": "/?source=pwa", "scope": "/", "display": "standalone",
+            "orientation": "portrait", "background_color": "#F2F2F7", "theme_color": "#F2F2F7",
+            "icons": [
+                {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                {"src": "/static/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png",
+                 "purpose": "maskable"},
+            ],
+            "shortcuts": [
+                {"name": "Today", "url": "/today", "icons": [{"src": "/static/icons/icon-192.png", "sizes": "192x192"}]},
+                {"name": "Review", "url": "/review", "icons": [{"src": "/static/icons/icon-192.png", "sizes": "192x192"}]},
+            ],
+        }, media_type="application/manifest+json")
+
+    @app.get("/sw.js", include_in_schema=False)
+    async def service_worker():
+        js = (HERE / "static" / "sw.js").read_text().replace("__VERSION__", __version__)
+        return Response(js, media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+    @app.get("/offline", response_class=HTMLResponse, include_in_schema=False)
+    async def offline(request: Request):
+        return templates.TemplateResponse(request, "offline.html", {"cfg": cfg})
+
+    @app.get("/favicon.ico", include_in_schema=False)
     async def favicon():
-        return Response(status_code=204)
+        return RedirectResponse("/static/icons/favicon-32.png", status_code=301)
 
     return app
 

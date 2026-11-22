@@ -5,7 +5,7 @@
 {% block content %}
 <div class="stack">
   <form class="row-flex" method="get" action="/activity">
-    <div class="search" style="flex:1;min-width:220px">{{ icon("search", 16) }}<input type="search" name="q" value="{{ q }}" placeholder="Search messages, people, items…"></div>
+    <div class="search" style="flex:1;min-width:220px">{{ icon("search", 16) }}<input type="search" name="q" value="{{ q }}" placeholder="Search"></div>
     {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
     <select name="source" onchange="this.form.submit()" style="width:auto">
       <option value="">All sources</option>

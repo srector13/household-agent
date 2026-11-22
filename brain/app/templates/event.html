@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% from "_macros.html" import initials, status_badge, cmd_card %}
 {% block title %}{{ e.sender_label }} · Household Agent{% endblock %}
-{% block heading %}<a href="/activity" class="faint" style="font-weight:500">Activity /</a> {{ e.sender_label or e.sender_handle }}{% endblock %}
+{% block back %}<a class="nav-back" href="/activity">{{ icon("chevron-left", 22) }}Activity</a>{% endblock %}
+{% block heading %}{% if e.is_from_me %}You → {% endif %}{{ e.sender_label or e.sender_handle }}{% endblock %}
 {% block subheading %}<div class="sub mono">{{ e.event_id }}</div>{% endblock %}
 {% block actions %}{{ status_badge(e.status) }}{% endblock %}
 {% block content %}
@@ -36,8 +37,8 @@
       <div class="sec-foot" style="justify-content:flex-start;flex-wrap:wrap">
         {% if can.approve %}<button class="btn ok" data-id="{{ e.event_id }}" onclick="HA.action(this,'approve',this.dataset.id,{done:'Approved'})">{{ icon("check", 16) }}Approve</button>{% endif %}
         {% if can.reject %}<button class="btn danger" data-id="{{ e.event_id }}" onclick="HA.action(this,'reject',this.dataset.id,{done:'Rejected'})">{{ icon("x", 16) }}Reject</button>{% endif %}
-        {% if can.undo %}<button class="btn danger" data-id="{{ e.event_id }}" onclick="HA.action(this,'undo',this.dataset.id,{confirm:'Delete the created items from Reminders/Calendar?',done:'Undo sent to the Mac'})">{{ icon("undo", 15) }}Undo</button>{% endif %}
-        {% if can.retry %}<button class="btn" data-id="{{ e.event_id }}" onclick="HA.action(this,'retry',this.dataset.id,{confirm:'Re-run extraction? Items from the previous run are removed first.',done:'Re-running'})">{{ icon("refresh", 15) }}Retry</button>{% endif %}
+        {% if can.undo %}<button class="btn danger" data-id="{{ e.event_id }}" onclick="HA.action(this,'undo',this.dataset.id,{confirm:'Undo what this message did in Reminders and Calendar?',confirmLabel:'Undo',done:'Undo sent to the Mac'})">{{ icon("undo", 15) }}Undo</button>{% endif %}
+        {% if can.retry %}<button class="btn" data-id="{{ e.event_id }}" onclick="HA.action(this,'retry',this.dataset.id,{confirm:'Run this message through the model again? Anything the previous run created is removed first.',confirmLabel:'Retry',done:'Re-running'})">{{ icon("refresh", 15) }}Retry</button>{% endif %}
         <button class="btn ghost" onclick="const d=document.getElementById('edit');d.open=true;d.scrollIntoView({behavior:'smooth'})">{{ icon("pencil", 15) }}Edit</button>
       </div>
     </div>

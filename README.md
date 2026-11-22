@@ -75,10 +75,30 @@ troubleshooting. For lid-closed, always-on operation (phase 6), run
 ## Development
 
 ```sh
-make test          # brain: 108 tests, no network (fake LLM)
+make test          # brain: 113 tests, no network (fake LLM)
 make run           # brain locally on :8080 with ./config.yaml
 make agent-test    # mac-agent: swift test (also runs on Linux, minus EventKit)
 ```
+
+## iPhone app (PWA)
+
+The dashboard installs as a home-screen app with its own icon. It opens full screen with an
+iOS-style design: large titles, blurred navigation and tab bars, inset grouped lists, action
+sheets, pull to refresh, and light/dark mode. iOS only enables the offline parts (the service
+worker) over HTTPS, and Tailscale can provide a real certificate:
+
+```sh
+# on the brain's host (once): needs MagicDNS + HTTPS certificates turned on in the Tailscale admin
+tailscale serve --bg 8080        # → https://<host>.<tailnet>.ts.net
+```
+
+1. Set **Settings → Alerts & dashboard → Dashboard URL** to that `https://` address, so alert
+   links open the app. Optionally rename the app there too (e.g. "Second Brain").
+2. On the iPhone, open the `https://` address in Safari → Share → **Add to Home Screen**.
+
+Offline, the app shows the last version of each page you opened; actions need the connection.
+Over plain `http://` it still installs and works, just without the offline cache. The Mac
+agent can keep using whichever address it already has.
 
 ## Dashboard
 
@@ -92,7 +112,7 @@ make agent-test    # mac-agent: swift test (also runs on Linux, minus EventKit)
 | **System** | Every component's health, funnel, command queue, alerts, settings change log, the prompt; test-alert and back-up-now buttons |
 | **Settings** | People & chats to watch (add, rename, pause, remove), reminders list, alert times, review threshold, model endpoint (with connection test), Discord, mail |
 
-It's built for the iPhone (bottom tab bar, add it to the home screen) and works in light and dark mode.
+It's built for the iPhone first (see **iPhone app** above) and works in light and dark mode.
 Writes from other sites are blocked (same-origin check). Set `dashboard.password` if more people
 share your tailnet, since anyone who can open the dashboard can change settings.
 
