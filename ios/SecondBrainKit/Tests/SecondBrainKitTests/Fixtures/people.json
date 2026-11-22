@@ -1,0 +1,19 @@
+{
+  "people": [
+    {
+      "key": "h-3ef3ee7232dc6a96",
+      "label": "Wife",
+      "handle": "+1 (785) 555-0000",
+      "group": false,
+      "photo": "/avatars/3ef3ee7232dc6a96.jpg?v=abc",
+      "contact_name": "Sarah Smith",
+      "mentioned": false,
+      "last": "2026-11-21T21:14:05.712017-06:00",
+      "promises": 0,
+      "waiting": 0,
+      "gifts": 1,
+      "facts": 0,
+      "todos": 2
+    }
+  ]
+}

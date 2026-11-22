@@ -1,0 +1,42 @@
+{
+  "tab": "history",
+  "counts": {
+    "todos": 3,
+    "collections": 1,
+    "history": 0
+  },
+  "items": [],
+  "groups": [],
+  "upcoming": [
+    {
+      "title": "Call the plumber",
+      "when": "2026-11-21T15:00:00-06:00",
+      "all_day": false,
+      "kind": "reminder",
+      "where": "Household",
+      "who": "Wife",
+      "location": null,
+      "item_id": "itm_001a2013f26ea8835a73a",
+      "event_id": "imessage:1",
+      "external": false,
+      "apple_id": null,
+      "color": null,
+      "late": false
+    },
+    {
+      "title": "Send Wife the photos",
+      "when": "2026-11-22T23:59:00-06:00",
+      "all_day": true,
+      "kind": "reminder",
+      "where": "Household",
+      "who": "Wife",
+      "location": null,
+      "item_id": "itm_001a2013f26ebebf0b31f",
+      "event_id": "imessage:1",
+      "external": false,
+      "apple_id": null,
+      "color": null,
+      "late": false
+    }
+  ]
+}

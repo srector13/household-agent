@@ -1,0 +1,113 @@
+{
+  "events": [
+    {
+      "id": "imessage:3",
+      "source": "imessage",
+      "sender": "Wife",
+      "sender_handle": "+17855550000",
+      "from_me": false,
+      "text": "we should paint the fence sometime",
+      "subject": null,
+      "received_at": "2026-11-21T21:14:05.712017-06:00",
+      "status": "needs_review",
+      "status_label": "Needs review",
+      "reason": "Maybe paint the fence: due date 2026-11-19 is in the past",
+      "confidence": 0.95,
+      "actions": [
+        {
+          "type": "create_reminder",
+          "title": "Maybe paint the fence"
+        }
+      ],
+      "photo": "/avatars/3ef3ee7232dc6a96.jpg?v=abc"
+    },
+    {
+      "id": "imessage:2",
+      "source": "imessage",
+      "sender": "Wife",
+      "sender_handle": "+17855550000",
+      "from_me": false,
+      "text": "I'd love a kindle",
+      "subject": null,
+      "received_at": "2026-11-21T21:14:05.678184-06:00",
+      "status": "done",
+      "status_label": "Done",
+      "reason": null,
+      "confidence": 0.95,
+      "actions": [
+        {
+          "type": "save_to_collection",
+          "title": "Kindle"
+        }
+      ],
+      "photo": "/avatars/3ef3ee7232dc6a96.jpg?v=abc"
+    },
+    {
+      "id": "imessage:1",
+      "source": "imessage",
+      "sender": "Wife",
+      "sender_handle": "+17855550000",
+      "from_me": false,
+      "text": "call the plumber at 3 today, and send me the photos",
+      "subject": null,
+      "received_at": "2026-11-21T21:14:05.666981-06:00",
+      "status": "done",
+      "status_label": "Done",
+      "reason": null,
+      "confidence": 0.95,
+      "actions": [
+        {
+          "type": "create_reminder",
+          "title": "Call the plumber"
+        },
+        {
+          "type": "track_promise",
+          "title": "Send Wife the photos"
+        }
+      ],
+      "photo": "/avatars/3ef3ee7232dc6a96.jpg?v=abc"
+    }
+  ],
+  "counts": {
+    "done": 2,
+    "needs_review": 1
+  },
+  "statuses": [
+    {
+      "key": "done",
+      "label": "Done"
+    },
+    {
+      "key": "queued",
+      "label": "Queued"
+    },
+    {
+      "key": "received",
+      "label": "Processing"
+    },
+    {
+      "key": "skipped",
+      "label": "Skipped"
+    },
+    {
+      "key": "needs_review",
+      "label": "Needs review"
+    },
+    {
+      "key": "failed",
+      "label": "Failed"
+    },
+    {
+      "key": "rejected",
+      "label": "Rejected"
+    },
+    {
+      "key": "undoing",
+      "label": "Undoing"
+    },
+    {
+      "key": "undone",
+      "label": "Undone"
+    }
+  ]
+}

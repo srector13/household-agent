@@ -1,0 +1,142 @@
+{
+  "greeting": "Good evening",
+  "now": "2026-11-21T21:14:05.737999-06:00",
+  "done_today": 0,
+  "problems": [
+    "The Mac agent hasn't connected yet."
+  ],
+  "next": null,
+  "picks": [
+    {
+      "item_id": "itm_001a2013f26ea8835a73a",
+      "title": "Call the plumber",
+      "why": "due today",
+      "first_step": "Find the card",
+      "status": "active",
+      "kind": "reminder",
+      "category": "todo",
+      "snoozed_to": null
+    }
+  ],
+  "picks_left": 1,
+  "before_morning": false,
+  "evening": true,
+  "morning_time": "07:30",
+  "attention": {
+    "reviews": [
+      {
+        "event": {
+          "id": "imessage:3",
+          "source": "imessage",
+          "sender": "Wife",
+          "sender_handle": "+17855550000",
+          "from_me": false,
+          "text": "we should paint the fence sometime",
+          "subject": null,
+          "received_at": "2026-11-21T21:14:05.712017-06:00",
+          "status": "needs_review",
+          "status_label": "Needs review",
+          "reason": "Maybe paint the fence: due date 2026-11-19 is in the past",
+          "confidence": 0.95,
+          "actions": [
+            {
+              "type": "create_reminder",
+              "title": "Maybe paint the fence"
+            }
+          ],
+          "photo": "/avatars/3ef3ee7232dc6a96.jpg?v=abc"
+        },
+        "titles": [
+          "Maybe paint the fence"
+        ]
+      }
+    ],
+    "followups": [],
+    "late": [],
+    "failed": 0,
+    "count": 1
+  },
+  "agenda": [
+    {
+      "title": "Send Wife the photos",
+      "when": "2026-11-22T23:59:00-06:00",
+      "all_day": true,
+      "kind": "reminder",
+      "where": "Household",
+      "who": "Wife",
+      "location": null,
+      "item_id": "itm_001a2013f26ebebf0b31f",
+      "event_id": "imessage:1",
+      "external": false,
+      "apple_id": null,
+      "color": null,
+      "late": false
+    },
+    {
+      "title": "Dentist",
+      "when": "2026-11-22T09:00:00-06:00",
+      "all_day": false,
+      "kind": "event",
+      "where": "Home",
+      "who": null,
+      "location": "Main St",
+      "item_id": null,
+      "event_id": null,
+      "external": true,
+      "apple_id": "E1/2026",
+      "color": "#34C759",
+      "late": false
+    },
+    {
+      "title": "Renew passport",
+      "when": "2026-11-23T23:59:00-06:00",
+      "all_day": true,
+      "kind": "reminder",
+      "where": "Personal",
+      "who": null,
+      "location": null,
+      "item_id": null,
+      "event_id": null,
+      "external": true,
+      "apple_id": "R1",
+      "color": null,
+      "late": false
+    }
+  ],
+  "recent": [
+    {
+      "verb": "Added",
+      "title": "Kindle",
+      "person": "Wife",
+      "kind": "reminder",
+      "category": "collection",
+      "collection": "gift_ideas",
+      "at": "2026-11-22T03:14:05.709+00:00",
+      "via": null,
+      "event_id": "imessage:2"
+    },
+    {
+      "verb": "Added",
+      "title": "Send Wife the photos",
+      "person": "Wife",
+      "kind": "reminder",
+      "category": "todo",
+      "collection": null,
+      "at": "2026-11-22T03:14:05.703+00:00",
+      "via": null,
+      "event_id": "imessage:1"
+    },
+    {
+      "verb": "Added",
+      "title": "Call the plumber",
+      "person": "Wife",
+      "kind": "reminder",
+      "category": "todo",
+      "collection": null,
+      "at": "2026-11-22T03:14:05.698+00:00",
+      "via": null,
+      "event_id": "imessage:1"
+    }
+  ],
+  "weekly_count": 0
+}

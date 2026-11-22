@@ -47,6 +47,9 @@ class Push:
         self.db = db
         with db.lock:
             db.conn.executescript(SCHEMA)
+            cols = {r[1] for r in db.conn.execute("PRAGMA table_info(push_log)")}
+            if "url" not in cols:  # v0.9 → v0.10: the app's notification feed opens the right screen
+                db.conn.execute("ALTER TABLE push_log ADD COLUMN url TEXT")
         self._sender = sender  # injectable for tests: (subscription, data, private_pem, claims) -> status code
         self.badge_fn: Callable[[], int] | None = None
         self._pending: dict[str, dict[str, Any]] = {}
@@ -119,8 +122,8 @@ class Push:
         skip = self._allowed(kind)
         subs = self.db.all("SELECT * FROM push_subs")
         if skip or not subs:
-            self.db.execute("INSERT INTO push_log (kind, title, body, sent, skipped, at) VALUES (?,?,?,?,?,?)",
-                            (kind, title, body, 0, skip or "no devices", utcnow()))
+            self.db.execute("INSERT INTO push_log (kind, title, body, sent, skipped, at, url) VALUES (?,?,?,?,?,?,?)",
+                            (kind, title, body, 0, skip or "no devices", utcnow(), url))
             return 0
         badge = None
         if self.badge_fn:
@@ -145,8 +148,8 @@ class Push:
                 self.db.execute("UPDATE push_subs SET last_ok=?, failures=0 WHERE endpoint=?", (utcnow(), s["endpoint"]))
             else:
                 self.db.execute("UPDATE push_subs SET failures=failures+1 WHERE endpoint=?", (s["endpoint"],))
-        self.db.execute("INSERT INTO push_log (kind, title, body, sent, skipped, at) VALUES (?,?,?,?,?,?)",
-                        (kind, title, body, ok, None, utcnow()))
+        self.db.execute("INSERT INTO push_log (kind, title, body, sent, skipped, at, url) VALUES (?,?,?,?,?,?,?)",
+                        (kind, title, body, ok, None, utcnow(), url))
         return ok
 
     def _deliver(self, sub: dict, payload: str, private_pem: str) -> int:

@@ -28,6 +28,7 @@ from .people import AvatarReport, People
 from .quick import Quick
 from .focus import Focus
 from .weekly import Weekly
+from .api_v1 import build_router
 from .config import Config, load_raw
 from .extract import LLMClient, LLMError, VLLMClient, extract
 from .gate import gate, normalize_handle
@@ -487,6 +488,11 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         except ValueError as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
         return {"ok": True}
+
+    app.include_router(build_router(
+        cfg=cfg, db=db, pipeline=pipeline, daily=daily, health=health, queue=queue, external=external,
+        people=people, weekly=weekly, focus=focus, quick=quick, settings=settings, push=push,
+        dash_auth=dash_auth, badge_count=badge_count))
 
     @app.post("/api/weekly/finish", dependencies=[Depends(dash_auth)])
     async def weekly_finish(body: dict = Body(default={})):

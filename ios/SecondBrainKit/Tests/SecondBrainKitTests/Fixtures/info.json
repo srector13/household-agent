@@ -1,0 +1,13 @@
+{
+  "app_name": "Second Brain",
+  "version": "0.9.0",
+  "timezone": "America/Chicago",
+  "now": "2026-11-21T21:14:05.733599-06:00",
+  "badge": 2,
+  "review_count": 1,
+  "agent_online": false,
+  "llm_ok": true,
+  "public_url": "http://brain:8080",
+  "morning_time": "07:30",
+  "evening_time": "20:30"
+}

@@ -1,0 +1,45 @@
+{
+  "items": [
+    {
+      "event": {
+        "id": "imessage:3",
+        "source": "imessage",
+        "sender": "Wife",
+        "sender_handle": "+17855550000",
+        "from_me": false,
+        "text": "we should paint the fence sometime",
+        "subject": null,
+        "received_at": "2026-11-21T21:14:05.712017-06:00",
+        "status": "needs_review",
+        "status_label": "Needs review",
+        "reason": "Maybe paint the fence: due date 2026-11-19 is in the past",
+        "confidence": 0.95,
+        "actions": [
+          {
+            "type": "create_reminder",
+            "title": "Maybe paint the fence"
+          }
+        ],
+        "photo": "/avatars/3ef3ee7232dc6a96.jpg?v=abc"
+      },
+      "proposals": [
+        {
+          "command_id": "cmd_001a2013f2717bf203f24201b",
+          "op": "create_reminder",
+          "title": "Maybe paint the fence",
+          "due": "2026-11-19",
+          "due_time": null,
+          "start": null,
+          "all_day": false,
+          "list": "Household",
+          "collection": null,
+          "person": null,
+          "summary": null
+        }
+      ],
+      "reasons": [
+        "Maybe paint the fence: due date 2026-11-19 is in the past"
+      ]
+    }
+  ]
+}

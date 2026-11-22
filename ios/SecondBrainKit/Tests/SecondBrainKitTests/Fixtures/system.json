@@ -1,0 +1,155 @@
+{
+  "version": "0.9.0",
+  "health": {
+    "agent": {
+      "online": false,
+      "last_seen_s_ago": null
+    },
+    "llm": {
+      "base_url": "http://localhost:8000/v1",
+      "model": "qwen",
+      "reachable": true,
+      "latency_ms": null,
+      "fail_streak": 0,
+      "last_error": null
+    },
+    "mail": {
+      "enabled": false,
+      "state": "disabled"
+    },
+    "queue_depth": 0,
+    "brain_uptime_s": 0
+  },
+  "today": {
+    "messages": 3,
+    "created": 3
+  },
+  "review": 1,
+  "failed_24h": 0,
+  "funnel": {
+    "received": 3,
+    "gated": 0,
+    "to_llm": 3,
+    "actionable": 3,
+    "created": 2,
+    "review": 1,
+    "failed": 0,
+    "pending": 0
+  },
+  "latency": {
+    "avg": 0,
+    "p50": 0,
+    "p90": 0,
+    "n": 3
+  },
+  "daily": [
+    {
+      "date": "2026-11-08",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-09",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-10",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-11",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-12",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-13",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-14",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-15",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-16",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-17",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-18",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-19",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-20",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-21",
+      "messages": 3,
+      "actionable": 3,
+      "created": 3
+    }
+  ],
+  "alerts": [],
+  "commands": [
+    {
+      "command_id": "cmd_001a2013f2717bf203f24201b",
+      "op": "create_reminder",
+      "status": "held",
+      "title": "Maybe paint the fence",
+      "sender": "Wife",
+      "created_at": "2026-11-22T03:14:05.719+00:00"
+    }
+  ],
+  "last_backup": null,
+  "db": {
+    "path": "/tmp/pytest-of-root/pytest-80/test_every_screen0/brain.db",
+    "size_bytes": 1054728,
+    "counts": {
+      "events": 3,
+      "trace": 24,
+      "commands": 4,
+      "alerts": 0
+    }
+  },
+  "settings_version": 0,
+  "push_devices": 0
+}
