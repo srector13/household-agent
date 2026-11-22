@@ -30,7 +30,7 @@
     </filter>
   </defs>
   <rect width="1024" height="1024" fill="url(#bg)"/>
-  <g transform="translate(102 112) scale(.8)">
+  <g transform="translate(41 48) scale(.92)">
     <g transform="translate(176 196) scale(28)" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)">
       <g fill="url(#fill)" stroke="none">
       <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/>
