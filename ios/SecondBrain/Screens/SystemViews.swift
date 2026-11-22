@@ -30,8 +30,13 @@ struct MoreView: View {
                 }
                 .pickerStyle(.menu)
                 .accessibilityIdentifier("appearance")
+            }
+            Section {
+                AppIconPicker()
+            } header: {
+                Text("App Icon")
             } footer: {
-                Text("The app icon follows your Home Screen: long-press it → Edit → Customize → Dark or Tinted.")
+                Text("Dark is the default. Tinted Home Screens get a version iOS colors for you.")
             }
             if let i = app.info {
                 Section {
@@ -328,4 +333,49 @@ struct ServerView: View {
     }
 
     private func refreshPermission() async { permission = await Notifier.shared.status() }
+}
+
+/// Choose between the black (default) and white app icons.
+struct AppIconPicker: View {
+    @State private var current = UIApplication.shared.alternateIconName
+
+    var body: some View {
+        HStack(spacing: 28) {
+            option(nil, "Dark", "IconDark")
+            option("AppIcon-Light", "Light", "IconLight")
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func option(_ name: String?, _ label: String, _ image: String) -> some View {
+        let selected = current == name
+        return Button {
+            Task { @MainActor in
+                guard UIApplication.shared.supportsAlternateIcons, current != name else { return }
+                do {
+                    try await UIApplication.shared.setAlternateIconName(name)
+                    current = name
+                } catch {}
+            }
+        } label: {
+            VStack(spacing: 8) {
+                Image(image)
+                    .resizable()
+                    .frame(width: 64, height: 64)
+                    .clipShape(.rect(cornerRadius: 15, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+                    .padding(3)
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(selected ? Color.accentColor : Color.clear, lineWidth: 2.5))
+                Text(label).font(.subheadline)
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(label) icon")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
 }

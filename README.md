@@ -113,8 +113,9 @@ same brain over Tailscale (the `/api/v1` JSON API), so the web app keeps working
   without opening the app. Also in the Shortcuts app as *Brain dump*, e.g. for the Action button.
 - **Lock Screen widget:** the same thing as a widget under the clock.
 
-**Dark mode** follows iOS, or pick Light / Dark under More → Appearance. The icon has dark and
-tinted versions too: long-press it on the Home Screen → Edit → Customize → Dark or Tinted.
+**Dark mode** follows iOS, or pick Light / Dark under More → Appearance. The icon is black with
+the blue-teal logo, like Apple's own; switch to the white one under More → App Icon. Tinted Home
+Screens get a version iOS colors for you.
 
 **Notifications** come from the brain's notification feed: the app checks it whenever you open
 it and whenever iOS gives it background time (Settings → General → Background App Refresh). That

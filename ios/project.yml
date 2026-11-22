@@ -32,6 +32,8 @@ targets:
         PRODUCT_NAME: SecondBrain
         TARGETED_DEVICE_FAMILY: "1"                         # iPhone
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: AppIcon-Light   # More → App Icon
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: ""                                # your Apple Developer team ID, for Xcode runs
         CODE_SIGN_STYLE: Automatic
