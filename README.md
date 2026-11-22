@@ -27,6 +27,8 @@ mac-agent (Swift, Mac)  ──HTTPS/Tailscale──▶  brain (FastAPI, Docker, 
 | `brain/app/prompts/extract.md` | The extraction prompt, versioned in its front matter (`extract-v1`), recorded on every event |
 | `brain/tests/` | Unit tests (fake LLM) + `fixtures/messages.jsonl`, the 64-case golden set |
 | `mac-agent/` | Swift package: chat.db watcher, typedstream decoder, EventKit, outbox, launchd plist, install scripts. See [mac-agent/README.md](mac-agent/README.md) |
+| `ios/` | The native iPhone app (SwiftUI): `project.yml` (XcodeGen), `SecondBrain/` screens, `SecondBrainKit/` models + API client (tested on Linux), `ci/devhost.py` (a seeded brain for screenshots) |
+| `.github/workflows/` | `ios.yml` (tests + simulator screenshots on every push), `build-ipa.yml` (unsigned `.ipa` release for Feather) |
 | `config.example.yaml` | Copy to `config.yaml` (gitignored) |
 
 ## Setup
@@ -84,7 +86,38 @@ make run           # brain locally on :8080 with ./config.yaml
 make agent-test    # mac-agent: swift test (also runs on Linux, minus EventKit)
 ```
 
-## iPhone app (PWA)
+## iPhone app (native)
+
+A SwiftUI app with every dashboard screen, built for iOS 26/27's Liquid Glass: Home, People,
+Lists, Review and More in the tab bar, a **Capture a thought…** bar above it, Mail-style swipes,
+Focus mode with a timer, the Weekly reset card deck, Status and native Settings. It talks to the
+same brain over Tailscale (the `/api/v1` JSON API), so the web app keeps working alongside it.
+
+**Install with Feather (no Apple developer account needed):**
+
+1. On GitHub: **Actions → Build unsigned IPA → Run workflow** (the repository must be public for
+   the free macOS runner minutes). Each run publishes a release `v1.0.N` with
+   `SecondBrain-v1.0.N-unsigned.ipa`.
+2. On the iPhone, open the release in Safari, share the `.ipa` to **Feather**, sign and install.
+3. Open **Second Brain**, enter the brain's address, e.g. `100.101.102.103:8080` or
+   `https://brain.your-tailnet.ts.net` (plus the dashboard password if you set one), tap Connect,
+   and allow notifications.
+
+**Notifications** come from the brain's notification feed: the app checks it whenever you open
+it and whenever iOS gives it background time (Settings → General → Background App Refresh). That
+can be minutes to hours apart, so for instant alerts keep the web app's notifications or Discord
+on as well. A real push certificate needs a paid developer account. Focus timers are scheduled on
+the phone, so they always fire on time. What you're told about is set in the app under
+Settings → Notifications (the same switches as the web).
+
+**Every push** runs `ios.yml`: the brain tests, the Swift package tests, then a macOS job that
+starts `ios/ci/devhost.py` (a real brain with a fake model, a fake Mac and a believable day of
+messages), runs the screenshot UI tests on an iPhone simulator, and uploads the screenshots as
+the `secondbrain-screenshots-N` artifact. To run the app from Xcode instead:
+`brew install xcodegen && cd ios && xcodegen generate && open SecondBrain.xcodeproj`, set your
+team, and run. `python3 ios/ci/devhost.py` gives you a local brain to point it at.
+
+## iPhone web app (PWA)
 
 The dashboard installs as a home-screen app with its own icon. It follows the iOS 26/27
 **Liquid Glass** design: a floating glass tab bar that shrinks as you scroll, glass toolbar

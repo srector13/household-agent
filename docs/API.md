@@ -303,3 +303,29 @@ Response `200 {"ok": true}`.
 - `GET /api/stream` Server-Sent Events (`data: {"event_id": "..."}` on every change)
 - `POST /api/events?sync=true` (with the agent token) processes the event before
   responding and returns the final status — handy for `curl` testing.
+
+## App API (`/api/v1`, brain ≥ 0.9)
+
+Used by the native iPhone app (`ios/`). Same auth as the dashboard (HTTP Basic with the dashboard
+password, when one is set); no Origin header is needed. Read-only screens:
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/v1/info` | app name, versions, badge count, review count, agent/model health |
+| `GET /api/v1/home` | greeting, next up, today's picks, needs-you, agenda (incl. your own iCloud items), recent |
+| `GET /api/v1/today` | picks, done today, today's events, tomorrow's candidates |
+| `GET /api/v1/weekly` | stale cards for the weekly reset |
+| `GET /api/v1/people`, `/api/v1/people/{key}` | roster with counts; one person's items and messages |
+| `GET /api/v1/items?tab=todos\|collections\|history` | items (with history + origin), collections by person, next 14 days |
+| `GET /api/v1/review` | messages waiting for a yes/no, with their proposals |
+| `GET /api/v1/activity?q=&status=&source=` | messages, status counts |
+| `GET /api/v1/events/{event_id}` | one message: trace, commands, items, what can be done |
+| `GET /api/v1/system` | health, funnel, latency, 14-day chart, alerts, open commands |
+| `GET /api/v1/notifications?after=ID` | the notification feed (what web push sends), for local notifications |
+
+Actions reuse the dashboard's endpoints: `/api/items/{id}/{done|snooze|reschedule|delete|restore|breakdown}`,
+`/api/items/{id}/snooze-options`, `/api/focus/{id}`, `/api/focus/timer`, `/api/weekly/...`,
+`/api/today/{repick|morning|evening|tomorrow}`, `/api/capture`, `/api/external/{apple_id}/done`,
+`/actions/{approve|reject|undo|retry|reprocess}/{event_id}` (send `X-Requested-With: fetch` for JSON),
+and `/api/settings` (GET / PATCH). Shapes are pinned by `brain/tests/test_api_v1.py`, which saves sample
+responses that the Swift tests decode.
