@@ -48,7 +48,9 @@ class Focus:
             raise ValueError("unknown item")
         st = it["state"]
         parsed = parse_notes(st.get("notes"))
-        first = st.get("first_step") or parsed["first_step"]
+        first = st.get("first_step") or parsed["first_step"] or next(
+            (p.get("first_step") for p in self.daily.plan(self.daily.today()).get("picks", [])
+             if p["item_id"] == item_id and p.get("first_step")), None)
         steps = st.get("steps") or parsed["steps"]
         timer = self.timer()
         return {

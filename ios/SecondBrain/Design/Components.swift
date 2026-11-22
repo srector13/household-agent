@@ -30,7 +30,7 @@ enum Symbols {
         if item.collection == "about_person" { return "person.text.rectangle" }
         if item.collection != nil { return "bookmark" }
         switch item.category {
-        case "promise": return "hands.clap"
+        case "promise": return "handshake"
         case "waiting": return "hourglass"
         default: return "checklist"
         }

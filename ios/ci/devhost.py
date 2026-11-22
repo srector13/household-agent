@@ -82,8 +82,8 @@ class FakeModel(BaseHTTPRequestHandler):
         name = body.get("response_format", {}).get("json_schema", {}).get("name")
         if name == "daily_pick":
             return self._send({"choices": [{"message": {"content": json.dumps({
-                "picks": [{"n": 1, "why": "due today", "first_step": "Open the water company's app"},
-                          {"n": 2, "why": "you promised Sarah", "first_step": "Open Photos, pick 5 favorites"},
+                "picks": [{"n": 1, "why": "you promised Sarah", "first_step": "Open Photos, pick 5 favorites"},
+                          {"n": 2, "why": "due today", "first_step": "Open the water company's app"},
                           {"n": 3, "why": "a quick win", "first_step": None}],
                 "note": "Three things. That's a full day."})}}]})
         if name == "breakdown":

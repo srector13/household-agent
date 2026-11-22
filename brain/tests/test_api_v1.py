@@ -125,7 +125,7 @@ def test_notifications_feed(client, llm):
     post(client, text="grab eggs tomorrow?")
     run_mac(client)
     import asyncio
-    asyncio.run(client.app_state.push._flush_all()) if hasattr(client.app_state.push, "_flush_all") else None
+    client.app_state.cfg.push.quiet_start = client.app_state.cfg.push.quiet_end = ""  # independent of the clock
     push = client.app_state.push
     asyncio.run(push.send("review", "Check this — Wife", "Maybe paint the fence", url="/review"))
     f = client.get("/api/v1/notifications", headers=J).json()

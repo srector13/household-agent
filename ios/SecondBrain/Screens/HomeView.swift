@@ -206,7 +206,7 @@ struct PickRow: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
-                    if p.category == "promise" { Image(systemName: "hands.clap").foregroundStyle(.teal) }
+                    if p.category == "promise" { Image(systemName: "handshake").foregroundStyle(.teal) }
                     if p.category == "waiting" { Image(systemName: "hourglass").foregroundStyle(.blue) }
                     Text(p.title).strikethrough(isDone || p.isGone).foregroundStyle(isDone || p.isGone ? .secondary : .primary)
                 }
@@ -270,7 +270,7 @@ private struct NeedsYouSection: View {
                                  subtitle: it.title + (BrainDate.due(it.due, nil).map { " · expected \($0)" } ?? ""))
             }
             ForEach(a.late) { it in
-                AttentionItemRow(item: it, symbol: "hands.clap", title: it.title,
+                AttentionItemRow(item: it, symbol: "handshake", title: it.title,
                                  subtitle: "You promised \(it.person ?? "someone")" + (BrainDate.due(it.due, nil).map { " · was due \($0)" } ?? ""))
             }
             if a.failed > 0 {

@@ -12,6 +12,7 @@ final class ScreenshotTests: XCTestCase {
     @MainActor
     func testScreenshots() {
         let app = XCUIApplication()
+        app.launchEnvironment["TZ"] = "America/Chicago"  // the devhost's day is in Chicago time
 
         // 1. First launch: connect.
         app.launchArguments = ["-SecondBrainReset", "-SecondBrainScreenshots"]
@@ -50,6 +51,7 @@ final class ScreenshotTests: XCTestCase {
             sleep(1)
             let field = app.textViews["capture-text"].exists ? app.textViews["capture-text"] : app.textFields["capture-text"]
             if field.exists { field.typeText("Book the car service next week") }
+            if app.buttons["Continue"].waitForExistence(timeout: 2) { app.buttons["Continue"].tap(); sleep(1) }
             shot("07-capture")
             if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
             sleep(1)
@@ -135,8 +137,13 @@ final class ScreenshotTests: XCTestCase {
 
     @MainActor
     private func tab(_ app: XCUIApplication, _ name: String) {
-        let b = app.tabBars.buttons[name]
-        if b.waitForExistence(timeout: 5) { b.tap() } else { app.buttons[name].firstMatch.tap() }
+        var b = app.tabBars.buttons[name]
+        if !b.waitForExistence(timeout: 3) {
+            // the tab bar collapses while scrolling: scroll back up to bring it back
+            app.swipeDown(); app.swipeDown()
+            b = app.tabBars.buttons[name]
+        }
+        if b.waitForExistence(timeout: 5) { b.tap() } else if app.buttons[name].firstMatch.exists { app.buttons[name].firstMatch.tap() }
     }
 
     @MainActor
