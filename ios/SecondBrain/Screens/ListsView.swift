@@ -39,7 +39,7 @@ private struct ItemsList: View {
                 ForEach(page.groups) { g in
                     ForEach(g.people) { p in
                         Section {
-                            ForEach(p.items) { it in ReminderRow(item: it, showPerson: false) }
+                            ForEach(p.items) { it in ReminderRow(item: it, showPerson: false, showCollection: false) }
                         } header: {
                             HeaderRow(g.label ?? g.key, detail: p.person)
                         }

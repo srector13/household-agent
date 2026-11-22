@@ -13,6 +13,7 @@ struct ReminderRow: View {
     @Environment(AppModel.self) private var app
     let item: Item
     var showPerson = true
+    var showCollection = true
     @State private var done: Bool?
     @State private var showDetail = false
 
@@ -27,7 +28,7 @@ struct ReminderRow: View {
                 if let step = item.firstStep, item.isOpen {
                     Text("Start: \(step)").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 }
-                if let meta = RowMeta.text(for: item, showPerson: showPerson) {
+                if let meta = RowMeta.text(for: item, showPerson: showPerson, showCollection: showCollection) {
                     meta.font(.subheadline).lineLimit(2)
                 }
             }
@@ -68,7 +69,7 @@ struct ReminderRow: View {
 
 /// The metadata line under a row: when (red if late) · where · who.
 enum RowMeta {
-    static func text(for item: Item, showPerson: Bool = true, now: Date = Date()) -> Text? {
+    static func text(for item: Item, showPerson: Bool = true, showCollection: Bool = true, now: Date = Date()) -> Text? {
         var parts: [Text] = []
         if item.kind == "event", let s = BrainDate.parse(item.start) {
             parts.append(Text(item.allDay ? BrainDate.niceDay(s) : "\(BrainDate.niceDay(s)), \(BrainDate.time(s))"))
@@ -81,7 +82,7 @@ enum RowMeta {
         case "promise": parts.append(Text("Promised \(item.person ?? "")"))
         case "waiting": parts.append(Text("Waiting on \(item.person ?? "")"))
         default:
-            if let c = item.collectionLabel { parts.append(Text(c)) }
+            if let c = item.collectionLabel { if showCollection { parts.append(Text(c)) } }
             else if let l = item.list, item.kind == "event" || l != "Household" { parts.append(Text(l)) }
             if showPerson, let p = item.person { parts.append(Text(p)) }
         }
