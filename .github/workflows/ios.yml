@@ -36,6 +36,12 @@ jobs:
         working-directory: brain
         run: python -m pytest -q
 
+      - name: No purple in the app
+        run: |
+          if grep -rnE "\.(purple|indigo)\b|Color\.(purple|indigo)" ios/SecondBrain; then
+            echo "::error::Purple/indigo is not allowed in this app"; exit 1
+          fi
+
       - name: Swift package tests (live against the devhost)
         shell: bash
         run: |

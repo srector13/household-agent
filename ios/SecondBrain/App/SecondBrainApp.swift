@@ -4,10 +4,21 @@ import SwiftUI
 @main
 struct SecondBrainApp: App {
     @State private var app = AppModel()
+    @AppStorage("appearance") private var appearance = "system"
     @Environment(\.scenePhase) private var phase
 
     init() {
         Notifier.shared.setUp()
+    }
+
+    /// Settings → Appearance: follow iOS, or always light / always dark.
+    private var scheme: ColorScheme? {
+        if ProcessInfo.processInfo.arguments.contains("-SecondBrainDark") { return .dark }
+        switch appearance {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
     }
 
     var body: some Scene {
@@ -15,7 +26,7 @@ struct SecondBrainApp: App {
             RootView()
                 .environment(app)
                 .tint(.blue)
-                .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-SecondBrainDark") ? .dark : nil)
+                .preferredColorScheme(scheme)
                 .onOpenURL { app.open(link: $0.absoluteString) }
                 .task {
                     Notifier.shared.onOpen = { [app] link in app.open(link: link) }

@@ -12,6 +12,9 @@ extension Color {
         self.init(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
     }
 
+    /// Dark slate for neutral tiles (no purple anywhere in this app).
+    static let slate = Color(red: 0.20, green: 0.24, blue: 0.32)
+
     static func category(_ item: Item) -> Color {
         if item.kind == "event" { return .red }
         if item.collection != nil { return .orange }

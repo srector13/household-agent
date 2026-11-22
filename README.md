@@ -103,6 +103,9 @@ same brain over Tailscale (the `/api/v1` JSON API), so the web app keeps working
    `https://brain.your-tailnet.ts.net` (plus the dashboard password if you set one), tap Connect,
    and allow notifications.
 
+**Dark mode** follows iOS, or pick Light / Dark under More → Appearance. The icon has dark and
+tinted versions too: long-press it on the Home Screen → Edit → Customize → Dark or Tinted.
+
 **Notifications** come from the brain's notification feed: the app checks it whenever you open
 it and whenever iOS gives it background time (Settings → General → Background App Refresh). That
 can be minutes to hours apart, so for instant alerts keep the web app's notifications or Discord

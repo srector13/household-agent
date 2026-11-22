@@ -121,6 +121,10 @@ final class ScreenshotTests: XCTestCase {
         tab(app, "Lists")
         sleep(2)
         shot("25-lists-dark")
+        tab(app, "More")
+        sleep(1)
+        shot("26-more-dark")
+        if tap(app.staticTexts["Weekly reset"].firstMatch) { sleep(2); shot("27-weekly-dark") }
     }
 
     // MARK: helpers

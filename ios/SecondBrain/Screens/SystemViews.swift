@@ -6,6 +6,7 @@ import UserNotifications
 
 struct MoreView: View {
     @Environment(AppModel.self) private var app
+    @AppStorage("appearance") private var appearance = "system"
 
     var body: some View {
         List {
@@ -18,6 +19,19 @@ struct MoreView: View {
                 link(.status, "Status", "server.rack", .gray)
                 link(.settings, "Settings", "gearshape.fill", .gray)
                 link(.server, "Server & notifications", "antenna.radiowaves.left.and.right", .blue)
+            }
+            Section {
+                Picker(selection: $appearance) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                } label: {
+                    Label { Text("Appearance") } icon: { IconTile(symbol: "circle.lefthalf.filled", color: .slate, size: 29) }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("appearance")
+            } footer: {
+                Text("The app icon follows your Home Screen: long-press it → Edit → Customize → Dark or Tinted.")
             }
             if let i = app.info {
                 Section {
