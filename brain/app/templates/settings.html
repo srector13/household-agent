@@ -174,6 +174,9 @@
           <input type="text" list="tzs" data-path="timezone" data-type="str" value="{{ v['timezone'] }}">
           <datalist id="tzs">{% for z in ["America/Chicago","America/New_York","America/Denver","America/Phoenix","America/Los_Angeles","America/Anchorage","Pacific/Honolulu","Europe/London","UTC"] %}<option value="{{ z }}">{% endfor %}</datalist>
         </label>
+        <div class="f full"><span>Glass</span>
+          <div class="glass-slider"><span>Clear</span><input type="range" min="0" max="1" step="0.05" id="glassTint" aria-label="Glass transparency"><span>Tinted</span></div>
+          <span class="help">How see-through bars and menus are on this device (like iOS 27's Liquid Glass setting). Reduce Transparency in iOS Settings makes them fully tinted.</span></div>
         <div class="f"><span>Not editable here</span><span class="help">Agent token, database path and dashboard password stay in config.yaml / env vars.</span></div>
       </div>
       {{ foot("general") }}
@@ -398,6 +401,9 @@ async function saveCollections(btn) {
 }
 
 /* ---------- init ---------- */
+(() => { const g = document.getElementById("glassTint");
+  let v = 0.35; try { const s = localStorage.getItem("glassTint"); if (s !== null) v = parseFloat(s); } catch {}
+  g.value = v; g.addEventListener("input", () => HA.setGlass(g.value)); })();
 renderCollections();
 renderPeople();
 document.querySelectorAll(".tags").forEach(initTags);

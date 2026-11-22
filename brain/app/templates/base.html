@@ -17,6 +17,7 @@
 <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
 <title>{% block title %}{{ cfg.dashboard.app_name }}{% endblock %}</title>
 <link rel="stylesheet" href="/static/app.css?v={{ version }}">
+<script>try{var g=localStorage.getItem("glassTint");if(g!==null)document.documentElement.style.setProperty("--glass-tint",g)}catch(e){}</script>
 <script src="/static/app.js?v={{ version }}"></script>
 </head>
 <body data-version="{{ version }}">
@@ -55,7 +56,8 @@
       <div class="nav-inner">
         <div class="nav-left">{% block back %}{% endblock %}</div>
         <div class="nav-title">{{ self.heading()|striptags|trim }}</div>
-        <div class="nav-right">{% block actions %}{% endblock %}<span class="live" id="live" title="Live updates"><span class="dot"></span></span></div>
+        {% set actions_html %}{% block actions %}{% endblock %}{% endset %}
+        <div class="nav-right">{% if actions_html|trim %}<div class="glass-group">{{ actions_html }}</div>{% endif %}<span class="live" id="live" title="Live updates"><span class="dot"></span></span></div>
       </div>
     </header>
     <main class="content">
@@ -65,12 +67,14 @@
   </div>
 </div>
 
-<nav class="tabbar">
+<nav class="tabbar" id="tabbar">
+  <div class="tabs-main">
   {% for key, href, ic, label, color in NAV %}
-  <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic, 25) }}{{ label }}
+  <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic, 24) }}{{ label }}
     {% if key == "review" %}<span class="count" data-review-count {{ "hidden" if not review_count }}>{{ review_count }}</span>{% endif %}</a>
   {% endfor %}
-  <button id="more-btn" class="{{ 'on' if nav in ('today','lab','system','settings') }}" type="button">{{ icon("more", 25) }}More</button>
+  </div>
+  <button id="more-btn" class="tab-more {{ 'on' if nav in ('today','lab','system','settings') }}" type="button" aria-label="More">{{ icon("more", 24) }}<span>More</span></button>
 </nav>
 <template id="more-items">
   {% for key, href, ic, label, color in NAV2 %}<a class="left" href="{{ href }}"><span class="tile t-{{ color }}">{{ icon(ic) }}</span>{{ label }}</a>{% endfor %}

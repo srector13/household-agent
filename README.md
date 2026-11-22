@@ -86,9 +86,11 @@ make agent-test    # mac-agent: swift test (also runs on Linux, minus EventKit)
 
 ## iPhone app (PWA)
 
-The dashboard installs as a home-screen app with its own icon. It opens full screen with an
-iOS-style design: large titles, blurred navigation and tab bars, inset grouped lists, action
-sheets, pull to refresh, and light/dark mode. iOS only enables the offline parts (the service
+The dashboard installs as a home-screen app with its own icon. It follows the iOS 26/27
+**Liquid Glass** design: a floating glass tab bar that shrinks as you scroll, glass toolbar
+buttons, rounder concentric shapes, glass sheets and banners, large titles, pull to refresh,
+and light/dark mode. Settings → General has a **Glass** slider (Clear ↔ Tinted) like iOS 27's,
+and iOS's Reduce Transparency setting is respected. iOS only enables the offline parts (the service
 worker) over HTTPS, and Tailscale can provide a real certificate:
 
 ```sh

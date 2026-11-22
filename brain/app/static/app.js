@@ -157,9 +157,29 @@
     });
   }
 
+  // ---- floating tab bar shrinks while scrolling down (Liquid Glass) -----------------------------
+  function tabbarMinimize() {
+    const bar = document.getElementById("tabbar");
+    if (!bar) return;
+    let last = scrollY, ticking = false;
+    addEventListener("scroll", () => {
+      if (ticking) return; ticking = true;
+      requestAnimationFrame(() => {
+        const y = scrollY, dy = y - last;
+        if (y < 40 || dy < -6) bar.classList.remove("mini");
+        else if (dy > 6) bar.classList.add("mini");
+        last = y; ticking = false;
+      });
+    }, { passive: true });
+  }
+  HA.setGlass = (v) => {
+    document.documentElement.style.setProperty("--glass-tint", v);
+    try { localStorage.setItem("glassTint", String(v)); } catch {}
+  };
+
   // ---- shell ----------------------------------------------------------------------------------
   document.addEventListener("DOMContentLoaded", () => {
-    connect(); tickTimes(); setInterval(tickTimes, 30000); navbar(); pullToRefresh();
+    connect(); tickTimes(); setInterval(tickTimes, 30000); navbar(); pullToRefresh(); tabbarMinimize();
     const more = document.getElementById("more-btn"), items = document.getElementById("more-items");
     if (more && items) more.addEventListener("click", () => HA.menu(items.innerHTML));
     HA.on((d) => { if (d.type === "heartbeat" || d.status) refreshShell(); });
