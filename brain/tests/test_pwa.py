@@ -60,4 +60,4 @@ def test_no_purple_anywhere(client):
     for hexcol in re.findall(r"#[0-9a-f]{6}", svg):
         r, g, b = (int(hexcol[i:i + 2], 16) / 255 for i in (1, 3, 5))
         h, s, _v = colorsys.rgb_to_hsv(r, g, b)
-        assert not (250 <= h * 360 <= 335 and s > 0.2), f"purple-ish {hexcol} in icon"
+        assert not (232 <= h * 360 <= 335 and s > 0.2), f"purple-ish {hexcol} in icon"  # indigo … magenta
