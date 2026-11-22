@@ -44,6 +44,8 @@ final class AppModel {
     var paths: [AppTab: [Route]] = [:]
     var focusItem: String?
     var showCapture = false
+    /// The next capture sheet opens listening (from the Control Center / Lock Screen control).
+    var captureDictate = false
 
     // feedback
     var toast: Toast?
@@ -187,6 +189,17 @@ final class AppModel {
 
     // MARK: deep links ("/review", "/?focus=itm_…", "/events/imessage:1", "/people/h-…")
 
+    /// Opens the capture sheet, optionally already listening.
+    func startCapture(dictate: Bool) {
+        captureDictate = dictate
+        if showCapture {  // already open: reopen so it starts listening
+            showCapture = false
+            Task { try? await Task.sleep(for: .milliseconds(350)); showCapture = true }
+        } else {
+            showCapture = true
+        }
+    }
+
     func open(link: String) {
         let s = link.replacingOccurrences(of: "secondbrain://", with: "/")
         if let r = s.range(of: "focus=") {
@@ -196,6 +209,10 @@ final class AppModel {
             return
         }
         let path = s.split(separator: "?").first.map(String.init) ?? s
+        if path.hasPrefix("/capture") {
+            startCapture(dictate: s.contains("dictate=1"))
+            return
+        }
         func push(_ t: AppTab, _ route: Route) { tab = t; paths[t] = [route] }
         if path == "/" || path.isEmpty { tab = .home; paths[.home] = [] }
         else if path.hasPrefix("/review") { tab = .review; paths[.review] = [] }

@@ -31,10 +31,15 @@ struct SecondBrainApp: App {
                 .task {
                     Notifier.shared.onOpen = { [app] link in app.open(link: link) }
                 }
+                // The Control Center / Lock Screen control ran its intent in this process.
+                .onReceive(NotificationCenter.default.publisher(for: CaptureRouter.requested)) { _ in
+                    if let dictate = CaptureRouter.take(), app.isConnected { app.startCapture(dictate: dictate) }
+                }
         }
         .onChange(of: phase) { _, now in
             switch now {
             case .active:
+                if let dictate = CaptureRouter.take(), app.isConnected { app.startCapture(dictate: dictate) }
                 app.changed()
                 app.startLive()
                 Task { await Notifier.shared.poll() }

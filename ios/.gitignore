@@ -6,3 +6,4 @@ xcuserdata/
 *.xcworkspace
 .build/
 .swiftpm/
+SecondBrainWidgets/Info.plist

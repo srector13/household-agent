@@ -103,6 +103,16 @@ same brain over Tailscale (the `/api/v1` JSON API), so the web app keeps working
    `https://brain.your-tailnet.ts.net` (plus the dashboard password if you set one), tap Connect,
    and allow notifications.
 
+**Capture from anywhere, by voice:**
+
+- **Control Center / Lock Screen / Action button:** add the **Capture a thought** control (Control
+  Center → + → search "Second Brain"; on the Lock Screen, long-press → Customize → replace the
+  flashlight or camera; Settings → Action Button → Controls). One tap opens the capture sheet
+  already listening — just talk, then tap Add. Recognition stays on the phone when it can.
+- **Siri:** "Hey Siri, brain dump in Second Brain" → Siri asks what's on your mind → say it → done,
+  without opening the app. Also in the Shortcuts app as *Brain dump*, e.g. for the Action button.
+- **Lock Screen widget:** the same thing as a widget under the clock.
+
 **Dark mode** follows iOS, or pick Light / Dark under More → Appearance. The icon has dark and
 tinted versions too: long-press it on the Home Screen → Edit → Customize → Dark or Tinted.
 

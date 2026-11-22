@@ -163,11 +163,15 @@ struct CaptureSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var busy = false
+    @State private var dictation = Dictation()
+    @State private var simulated = false   // screenshot mode: show the listening look without a mic
     @FocusState private var focused: Bool
+
+    private var listening: Bool { dictation.listening || simulated }
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 TextField("Pick up the dry cleaning Friday, call Mom about Sunday…", text: $text, axis: .vertical)
                     .lineLimit(4...12)
                     .font(.body)
@@ -175,8 +179,23 @@ struct CaptureSheet: View {
                     .padding(14)
                     .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 18))
                     .accessibilityIdentifier("capture-text")
-                Text("Handled like a note to yourself: to-dos, events and ideas get sorted out for you. Tap the mic on the keyboard to dictate.")
+
+                HStack {
+                    Spacer()
+                    MicButton(listening: listening, level: dictation.level) {
+                        if listening { stopListening() } else { startListening() }
+                    }
+                    Spacer()
+                }
+                .padding(.top, 6)
+                Text(listening ? "Listening… tap the text to edit, or Add when you're done."
+                               : "Tap the mic to talk, or type. To-dos, events and ideas get sorted out for you.")
                     .font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+                if let e = dictation.error {
+                    Label(e, systemImage: "mic.slash").font(.footnote).foregroundStyle(.orange)
+                }
                 Spacer()
             }
             .padding()
@@ -184,7 +203,7 @@ struct CaptureSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", role: .cancel) { dismiss() }
+                    Button("Cancel", role: .cancel) { dictation.stop(); dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -196,17 +215,74 @@ struct CaptureSheet: View {
                     .accessibilityIdentifier("capture-add")
                 }
             }
-            .onAppear { focused = true }
+            .onAppear {
+                if app.captureDictate {
+                    app.captureDictate = false
+                    startListening()
+                } else {
+                    focused = true
+                }
+            }
+            .onDisappear { dictation.stop() }
+            .onChange(of: dictation.transcript) { _, t in if dictation.listening { text = t } }
+            .onChange(of: focused) { _, f in if f && listening { stopListening() } }
+            .sensoryFeedback(.start, trigger: dictation.listening) { _, now in now }
         }
     }
 
+    private func startListening() {
+        focused = false
+        if AppModel.screenshotMode {
+            simulated = true
+            text = "Pick up the dry cleaning Friday and call Mom about Sunday lunch"
+            return
+        }
+        let current = text
+        Task { await dictation.start(prefix: current) }
+    }
+
+    private func stopListening() {
+        simulated = false
+        dictation.stop()
+    }
+
     private func send() async {
+        stopListening()
         busy = true
         defer { busy = false }
         let t = text
         if await app.run("Got it — sorting it out", { try await $0.capture(t) }) {
             dismiss()
         }
+    }
+}
+
+/// A big glass mic that pulses with your voice while it listens.
+private struct MicButton: View {
+    var listening: Bool
+    var level: Float
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                if listening {
+                    Circle().fill(Color.red.opacity(0.18))
+                        .frame(width: 96 + CGFloat(level) * 40, height: 96 + CGFloat(level) * 40)
+                        .animation(.easeOut(duration: 0.12), value: level)
+                }
+                Image(systemName: listening ? "waveform" : "mic.fill")
+                    .font(.system(size: 30, weight: .semibold))
+                    .symbolEffect(.variableColor.iterative, isActive: listening)
+                    .foregroundStyle(.white)
+                    .frame(width: 84, height: 84)
+                    .background(listening ? Color.red : Color.blue, in: .circle)
+            }
+            .frame(width: 140, height: 140)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(listening ? "Stop listening" : "Dictate")
+        .accessibilityIdentifier("capture-mic")
     }
 }
 

@@ -57,6 +57,13 @@ final class ScreenshotTests: XCTestCase {
             sleep(1)
         }
 
+        // 4b. The Control Center / Lock Screen route: open capture already listening.
+        app.open(URL(string: "secondbrain://capture?dictate=1")!)
+        sleep(3)
+        shot("28-capture-listening")
+        if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
+        sleep(1)
+
         // 5. People.
         tab(app, "People")
         sleep(2)
