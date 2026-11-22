@@ -25,6 +25,8 @@ def chat_key(ev: Event) -> str:
     """One key per conversation. 1:1 chats key on the person (iMessage and SMS threads merge)."""
     if ev.source == "mail":
         return "mail:" + normalize_handle(ev.sender_handle)
+    if ev.source == "capture":
+        return "capture"
     if ev.chat_id and ";+;" in ev.chat_id:  # group chat
         return ev.chat_id
     return normalize_handle(ev.sender_handle) or (ev.chat_id or "")
@@ -38,6 +40,7 @@ class Items:
     def __init__(self, db: DB, cfg: Config):
         self.db = db
         self.cfg = cfg
+        self.on_created = None  # callback(item, cmd) when the Mac confirms a newly created item
 
     # ---- rows ----------------------------------------------------------------------------
     @staticmethod
@@ -197,6 +200,7 @@ class Items:
         if res.apple_item_id and cmd["op"] != "delete_item":
             fields["apple_item_id"] = res.apple_item_id
         meta = cmd.get("meta") or {}
+        log = (lambda *a: None) if meta.get("applied") else self.log  # the app already logged it
         if purpose in ("update", "complete") or (purpose == "undo" and cmd["op"] == "update_item"):
             changes = cmd["payload"].get("changes", {})
             state = {**item["state"], **{k: v for k, v in changes.items() if k != "completed"}}
@@ -212,18 +216,23 @@ class Items:
                 action = "moved to Today" if meta.get("why") == "today's pick" else "moved back off Today"
             elif meta.get("why") == "break it down":
                 action = "steps added"
-            self.log(item["item_id"], cmd["event_id"], action, {"changes": changes})
+            log(item["item_id"], cmd["event_id"], action, {"changes": changes})
         elif purpose == "undo" and cmd["op"] == "delete_item":
             fields["status"] = "undone"
-            self.log(item["item_id"], cmd["event_id"], "undone", None)
+            log(item["item_id"], cmd["event_id"], "undone", None)
         elif purpose == "undo":  # re-created after an undone cancel
             fields["status"] = "active"
-            self.log(item["item_id"], cmd["event_id"], "restored", None)
+            log(item["item_id"], cmd["event_id"], "restored", None)
         else:
             fields["status"] = DONE_STATUS.get(purpose, item["status"])
-            self.log(item["item_id"], cmd["event_id"], {"create": "created", "cancel": "cancelled"}[purpose],
+            log(item["item_id"], cmd["event_id"], {"create": "created", "cancel": "cancelled"}[purpose],
                      {"via": meta.get("why")} if meta.get("why") else None)
         self.update(item["item_id"], **fields)
+        if purpose == "create" and cmd["op"] in ("create_reminder", "create_event") and self.on_created:
+            try:
+                self.on_created({**item, **fields}, cmd)
+            except Exception:  # noqa: BLE001 — a notification problem must never break the pipeline
+                pass
 
     # ---- migration ------------------------------------------------------------------------------
     def backfill(self) -> int:

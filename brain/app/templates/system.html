@@ -81,6 +81,7 @@
           <dt>Full Disk Access</dt><dd>{{ yes(a.fda_ok) }}</dd>
           <dt>Reminders</dt><dd>{{ yes(a.reminders_ok) }}</dd>
           <dt>Calendar</dt><dd>{{ yes(a.calendar_ok) }}</dd>
+          <dt>Contacts (photos)</dt><dd>{% if a.contacts_ok %}<span class="badge b-ok">OK</span>{% elif a.contacts_ok is none %}<span class="badge b-muted">not reported</span>{% else %}<span class="badge b-warn">not allowed</span>{% endif %}</dd>
           <dt>Sections & tags</dt><dd>{% if a.reminderkit_ok %}<span class="badge b-ok">working</span>{% elif a.reminderkit_ok is none %}<span class="badge b-muted">not reported</span> <span class="faint">(agent older than 0.4)</span>{% else %}<span class="badge b-warn">unavailable</span> <span class="faint">names go in titles instead</span>{% endif %}</dd>
           <dt>Last ROWID</dt><dd class="mono">{{ a.last_rowid }}</dd>
           <dt>Outbox</dt><dd>{{ a.buffered_events }} buffered</dd>

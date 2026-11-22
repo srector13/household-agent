@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Weekly reset · {{ cfg.dashboard.app_name }}{% endblock %}
+{% block heading %}Weekly reset{% endblock %}
+{% block subheading %}<div class="sub">{% if cards %}{{ cards|length }} thing{{ "s" if cards|length != 1 }} gone stale. Swipe right to keep, left to drop.{% else %}A quick sweep of anything that's gone stale.{% endif %}</div>{% endblock %}
+{% block content %}
+<div class="wk" id="wk">
+  {% if cards %}
+  <div class="wk-progress"><div class="bar"><span id="wk-bar"></span></div><span id="wk-count">1 of {{ cards|length }}</span></div>
+  <div class="wk-stack" id="wk-stack"></div>
+  <div class="wk-acts" id="wk-acts">
+    <button class="wk-btn drop" data-act="drop" aria-label="Drop it">{{ icon("trash", 22) }}<span>Drop</span></button>
+    <button class="wk-btn later" data-act="schedule" aria-label="Schedule it">{{ icon("clock", 22) }}<span>Schedule</span></button>
+    <button class="wk-btn done" data-act="done" aria-label="Already done">{{ icon("check", 24) }}<span>Done</span></button>
+    <button class="wk-btn keep" data-act="keep" aria-label="Keep it">{{ icon("bookmark", 22) }}<span>Keep</span></button>
+  </div>
+  {% endif %}
+  <div class="wk-end card" id="wk-end" {% if cards %}hidden{% endif %}>
+    <div class="fx-bigcheck">{{ icon("check", 52) }}</div>
+    <h2 id="wk-end-title">{{ "All clear" if not cards else "Reset done" }}</h2>
+    <p id="wk-end-sub">{% if not cards %}Nothing's gone stale — your lists are in good shape.{% endif %}</p>
+    {% if last and not cards %}<p class="faint" style="font-size:14px">Last reset <span data-ago="{{ last.at }}"></span>{% if last.counts %} · {% for k, n in last.counts.items() if n %}{{ n }} {{ {"keep":"kept","schedule":"scheduled","done":"done","drop":"dropped"}[k] }}{{ ", " if not loop.last }}{% endfor %}{% endif %}</p>{% endif %}
+    <a class="btn primary" href="/" style="justify-self:center;margin-top:8px">Back to Home</a>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const cards = {{ cards|tojson }};
+  if (!cards.length) return;
+  const counts = { keep: 0, schedule: 0, done: 0, drop: 0 };
+  const stack = document.getElementById("wk-stack");
+  let i = 0, busy = false;
+  HA.afterItemChange = () => {};  // stay on this page after scheduling
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function cardHTML(c) {
+    return `<div class="wk-card" data-id="${esc(c.item_id)}" data-kind="reminder" data-title="${esc(c.title)}">
+      <div class="stamp keep">KEEP</div><div class="stamp drop">DROP</div>
+      <div class="why ${c.rank === 0 ? "late" : ""}">${esc(c.why)}</div>
+      <div class="t">${c.category === "promise" ? "🤝 " : c.category === "waiting" ? "⏳ " : ""}${esc(c.title)}</div>
+      ${c.person ? `<div class="who">${c.category === "promise" ? "You promised " : c.category === "waiting" ? "Waiting on " : "From "}${esc(c.person)}</div>` : ""}
+      ${c.quote ? `<div class="q">${c.from_me ? "You" : esc(c.person || "")}: “${esc(c.quote)}”</div>` : ""}
+    </div>`;
+  }
+  function show() {
+    document.getElementById("wk-count").textContent = `${Math.min(i + 1, cards.length)} of ${cards.length}`;
+    document.getElementById("wk-bar").style.width = `${(i / cards.length) * 100}%`;
+    if (i >= cards.length) return end();
+    stack.innerHTML = (cards[i + 1] ? cardHTML(cards[i + 1]).replace('class="wk-card"', 'class="wk-card behind"') : "") + cardHTML(cards[i]);
+    drag(stack.querySelector(".wk-card:not(.behind)"));
+  }
+  function fly(card, dir) {
+    card.style.transition = "transform .35s cubic-bezier(.2,.9,.3,1), opacity .35s";
+    card.style.transform = dir === "down" ? "translateY(40px) scale(.9)" : `translateX(${dir === "right" ? 140 : -140}%) rotate(${dir === "right" ? 14 : -14}deg)`;
+    card.style.opacity = "0";
+  }
+  async function act(kind) {
+    if (busy || i >= cards.length) return;
+    const c = cards[i], card = stack.querySelector(".wk-card:not(.behind)");
+    busy = true;
+    try {
+      if (kind === "keep") await HA.api("POST", `/api/weekly/${encodeURIComponent(c.item_id)}/keep`);
+      if (kind === "done") { await HA.api("POST", `/api/items/${encodeURIComponent(c.item_id)}/done`, { done: true }); HA.confetti && HA.confetti(card, 24); }
+      if (kind === "drop") {
+        await HA.api("POST", `/api/items/${encodeURIComponent(c.item_id)}/delete`);
+        HA.toast("Dropped", "ok", { action: "Undo", onAction: async () => {
+          try { await HA.api("POST", `/api/items/${encodeURIComponent(c.item_id)}/restore`); counts.drop--; counts.keep++; HA.toast("Restored"); }
+          catch (e) { HA.toast(e.message, "bad"); } } });
+      }
+      if (kind === "schedule") {
+        const ok = await HA.item.snooze(card);
+        if (!ok) { busy = false; card.style.transform = ""; return; }
+      }
+      counts[kind]++;
+      fly(card, kind === "keep" ? "right" : kind === "drop" ? "left" : "down");
+      setTimeout(() => { i++; busy = false; show(); }, 260);
+    } catch (e) { HA.toast(e.message, "bad"); busy = false; card.style.transform = ""; }
+  }
+  function drag(card) {
+    let x0 = null, dx = 0;
+    card.addEventListener("pointerdown", (e) => { x0 = e.clientX; dx = 0; card.style.transition = "none"; card.setPointerCapture(e.pointerId); });
+    card.addEventListener("pointermove", (e) => {
+      if (x0 === null) return;
+      dx = e.clientX - x0;
+      card.style.transform = `translateX(${dx}px) rotate(${dx / 20}deg)`;
+      card.classList.toggle("k", dx > 40); card.classList.toggle("d", dx < -40);
+    });
+    const up = () => {
+      if (x0 === null) return; x0 = null;
+      card.classList.remove("k", "d");
+      if (dx > 100) act("keep"); else if (dx < -100) act("drop");
+      else { card.style.transition = "transform .3s cubic-bezier(.2,.9,.3,1)"; card.style.transform = ""; }
+    };
+    card.addEventListener("pointerup", up); card.addEventListener("pointercancel", up);
+  }
+  async function end() {
+    document.getElementById("wk-acts").hidden = true;
+    stack.hidden = true;
+    document.querySelector(".wk-progress").hidden = true;
+    const e = document.getElementById("wk-end"); e.hidden = false;
+    const parts = [["done", "done"], ["schedule", "scheduled"], ["keep", "kept"], ["drop", "dropped"]].filter(([k]) => counts[k]).map(([k, l]) => `${counts[k]} ${l}`);
+    document.getElementById("wk-end-sub").textContent = parts.join(" · ") + ". Fresh week, lighter lists.";
+    HA.confetti && HA.confetti(e.querySelector(".fx-bigcheck"));
+    try { await HA.api("POST", "/api/weekly/finish", { counts }); } catch {}
+    HA.updateBadge && HA.updateBadge();
+  }
+  document.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => act(b.dataset.act));
+  document.addEventListener("keydown", (e) => {
+    const k = { ArrowRight: "keep", ArrowLeft: "drop", d: "done", s: "schedule" }[e.key];
+    if (k && !document.querySelector(".asheet")) act(k);
+  });
+  show();
+})();
+</script>
+{% endblock %}

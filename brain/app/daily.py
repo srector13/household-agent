@@ -45,6 +45,7 @@ class Daily:
     def __init__(self, cfg: Config, db: DB, items: Items, queue: CommandQueue, llm, alerter: Alerter, bus: Bus):
         self.cfg, self.db, self.items, self.queue, self.llm, self.alerter, self.bus = (
             cfg, db, items, queue, llm, alerter, bus)
+        self.push = None  # set by the app
 
     # ---- state ------------------------------------------------------------------------------
     def plan(self, day: date) -> dict[str, Any]:
@@ -105,8 +106,10 @@ class Daily:
         out.sort(key=lambda x: -x["score"])
         return out[:limit]
 
+    external = None  # set by the app: your own iCloud calendars (external.External)
+
     def events_on(self, day: date) -> list[dict[str, Any]]:
-        out = []
+        out = list(self.external.events_on(day)) if self.external else []
         for r in self.db.all("SELECT * FROM items WHERE status IN ('planned','active') AND kind='event'"):
             it = self.items._decode(r)
             st = it["state"]
@@ -234,9 +237,26 @@ class Daily:
                     note=note, moved=moved, morning_at=now.isoformat())
         self.save_plan(day, plan)
         await self.queue.wake()
-        if self.cfg.daily.discord:
+        if self.cfg.daily.discord and (self.cfg.push.discord_too or not self.push):
             await self.alerter.send("daily", self.morning_text(day, plan))
+        if self.push:
+            lines = [f"{i}. {p['title']}" for i, p in enumerate(plan["picks"], 1)] or ["Nothing open — enjoy the day."]
+            picked = {p["item_id"] for p in plan["picks"]}
+            follow = [f for f in self.followups_due(day) if f["item_id"] not in picked] if self.cfg.push.followups else []
+            if follow:
+                lines.append("⏳ Follow up: " + ", ".join(f"{f['person']} ({f['title']})" for f in follow[:3]))
+            await self.push.send("daily", f"Today's {len(plan['picks'])}" if plan["picks"] else "Good morning",
+                                 "\n".join(lines), url="/", tag=f"morning:{day.isoformat()}")
         return plan
+
+    def followups_due(self, day: date) -> list[dict[str, Any]]:
+        out = []
+        for r in self.db.all("SELECT * FROM items WHERE status IN ('planned','active') AND category='waiting'"):
+            it = self.items._decode(r)
+            due = it["state"].get("due")
+            if due and date.fromisoformat(due) <= day:
+                out.append(it)
+        return out
 
     def morning_text(self, day: date, plan: dict[str, Any]) -> str:
         n = len(plan["picks"])
@@ -281,8 +301,12 @@ class Daily:
         plan.update(evening_at=now.isoformat(), done=[d["title"] for d in done], rolled=rolled)
         self.save_plan(day, plan)
         await self.queue.wake()
-        if self.cfg.daily.discord:
+        if self.cfg.daily.discord and (self.cfg.push.discord_too or not self.push):
             await self.alerter.send("daily", self.evening_text(day, plan, nxt))
+        if self.push:
+            body = (f"✅ {len(done)} done" if done else "Nothing ticked off — that's okay.") + (
+                f" · ↪️ {len(rolled)} moved off Today" if rolled else "") + "\nTap to pick tomorrow's three."
+            await self.push.send("daily", "Wrapping up", body, url="/today", tag=f"evening:{day.isoformat()}")
         return plan
 
     def evening_text(self, day: date, plan: dict[str, Any], nxt: dict[str, Any]) -> str:
@@ -330,7 +354,8 @@ class Daily:
                                {"apple_item_id": it.get("apple_item_id"), "tag": it["tag"], "kind": "reminder",
                                 "changes": {"completed": done}, "notes_append": None},
                                "pending", item_id=item_id, purpose=purpose,
-                               meta={"previous": {"completed": not done}, "why": "ticked in the app", "title": it["title"]})
+                               meta={"previous": {"completed": not done}, "why": "ticked in the app", "title": it["title"],
+                                     "applied": True})
         # Show it right away; the Mac's result confirms it (completion sync would correct a failure).
         fields: dict[str, Any] = {"status": "completed" if done else "active"}
         if done:

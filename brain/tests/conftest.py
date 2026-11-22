@@ -45,7 +45,7 @@ class FakeAlerter:
     def __init__(self):
         self.sent: list[tuple[str, str]] = []
 
-    async def send(self, kind, message):
+    async def send(self, kind, message, **kw):
         self.sent.append((kind, message))
         return True
 

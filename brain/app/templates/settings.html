@@ -42,6 +42,7 @@
     <a href="#people"><span class="tile t-green">{{ icon("users") }}</span>People & chats</a>
     <a href="#reminders"><span class="tile t-blue">{{ icon("check-square") }}</span>Reminders & calendar</a>
     <a href="#collections"><span class="tile t-orange">{{ icon("bookmark") }}</span>Collections</a>
+    <a href="#notifications"><span class="tile t-red">{{ icon("bell") }}</span>Notifications</a>
     <a href="#daily"><span class="tile t-yellow">{{ icon("sun") }}</span>Daily rhythm</a>
     <a href="#model"><span class="tile t-mint">{{ icon("sparkles") }}</span>Model</a>
     <a href="#alerts"><span class="tile t-red">{{ icon("bell") }}</span>Alerts & dashboard</a>
@@ -101,6 +102,31 @@
         <span class="status" id="status-collections">All changes saved</span><button class="btn primary" type="button" onclick="saveCollections(this)">{{ icon("check", 15) }}Save</button></div>
     </section>
 
+    <!-- NOTIFICATIONS -->
+    <form class="sec card" id="notifications" data-section>
+      <div class="card-h"><div><h2>Notifications</h2><p>Real iPhone notifications from the home-screen app, plus a badge on its icon for what's waiting on you.</p></div></div>
+      <div class="card-b" style="display:grid;gap:12px">
+        <div class="notice" id="pushState" style="background:var(--fill)"><span class="body">Checking…</span></div>
+        <div class="row-flex">
+          <button type="button" class="btn primary" id="pushOn">{{ icon("bell", 15) }}Turn on for this iPhone</button>
+          <button type="button" class="btn" id="pushTest">Send a test</button>
+          <button type="button" class="btn danger" id="pushOff" hidden>Turn off here</button>
+        </div>
+      </div>
+      <div class="card-b fields" style="padding-top:0">
+        <div class="full">{{ toggle("push.daily", "Morning three & evening recap") }}</div>
+        <div class="full">{{ toggle("push.new_items", "When something is added", "\"☑️ Pick up eggs · Sarah\" — several from one message arrive as one notification.") }}</div>
+        <div class="full">{{ toggle("push.review", "When something needs a look") }}</div>
+        <div class="full">{{ toggle("push.followups", "Follow-ups that are due (in the morning)") }}</div>
+        <div class="full">{{ toggle("push.weekly", "Sunday weekly review") }}</div>
+        <div class="full">{{ toggle("push.system", "Problems (Mac offline, model down)", "These come through even during quiet hours.") }}</div>
+        {{ text("push.quiet_start", "Quiet from", "", "time") }}
+        {{ text("push.quiet_end", "Quiet until", "", "time") }}
+        <div class="full">{{ toggle("push.discord_too", "Also send the daily briefing and reviews to Discord") }}</div>
+      </div>
+      {{ foot("notifications") }}
+    </form>
+
     <!-- DAILY -->
     <form class="sec card" id="daily" data-section>
       <div class="card-h"><div><h2>Daily rhythm</h2><p>A few things each morning, a short recap each evening. Unfinished picks move back off Today — no overdue pile.</p></div></div>
@@ -111,6 +137,15 @@
         {{ text("daily.count", "How many things a day", "3 is the sweet spot.", "number", 'min="1" max="7"') }}
         <div class="full">{{ toggle("daily.today_view", "Put the picks in Reminders' Today view", "Undated or later items get today's date while they're picked, and their old date back in the evening if not done.") }}</div>
         <div class="full">{{ toggle("daily.discord", "Send the briefing and recap to Discord") }}</div>
+        <label class="f">
+          <span>Weekly reset on{{ src("daily.weekly_day") }}</span>
+          <select data-path="daily.weekly_day" data-type="str">
+            {% for k, n in [("mon","Monday"),("tue","Tuesday"),("wed","Wednesday"),("thu","Thursday"),("fri","Friday"),("sat","Saturday"),("sun","Sunday")] %}
+            <option value="{{ k }}" {{ "selected" if v["daily.weekly_day"] == k }}>{{ n }}</option>{% endfor %}
+          </select>
+          <span class="help">A 2-minute swipe through anything that's gone stale.</span>
+        </label>
+        {{ text("daily.weekly_time", "Weekly reset at", "", "time") }}
       </div>
       {{ foot("daily") }}
     </form>
@@ -399,6 +434,26 @@ async function saveCollections(btn) {
   } catch (e) { HA.toast(e.message, "bad"); document.getElementById("status-collections").textContent = e.message; }
   finally { HA.busy(btn, false); }
 }
+
+/* ---------- notifications ---------- */
+(() => {
+  const st = document.getElementById("pushState"), on = document.getElementById("pushOn"), off = document.getElementById("pushOff");
+  const say = (msg, kind) => { st.querySelector(".body").textContent = msg; st.className = "notice " + (kind || ""); st.style.background = "var(--fill)"; };
+  async function refresh() {
+    const s = await HA.push.state().catch(() => "unsupported");
+    on.hidden = s === "on"; off.hidden = s !== "on";
+    if (s === "on") say("✅ Notifications are on for this device.", "ok");
+    else if (s === "denied") say("Notifications are blocked — turn them on in iOS Settings → Notifications → " + {{ cfg.dashboard.app_name|tojson }} + ".", "warn");
+    else if (s === "unsupported") say(HA.push.standalone ? "This browser can't receive notifications." :
+      "Open the app from your Home Screen (Share → Add to Home Screen) over https:// to turn on notifications.", "info");
+    else say("Notifications are off for this device.", "");
+  }
+  on.onclick = async () => { HA.busy(on, true); try { await HA.push.enable(); HA.toast("Notifications on"); } catch (e) { HA.toast(e.message, "bad"); } HA.busy(on, false); refresh(); };
+  off.onclick = async () => { await HA.push.disable().catch(() => {}); HA.toast("Notifications off for this device"); refresh(); };
+  document.getElementById("pushTest").onclick = async (ev) => { const b = ev.currentTarget; HA.busy(b, true);
+    try { await HA.api("POST", "/api/push/test"); HA.toast("Sent — check your notifications"); } catch (e) { HA.toast(e.message, "bad"); } HA.busy(b, false); };
+  refresh();
+})();
 
 /* ---------- init ---------- */
 (() => { const g = document.getElementById("glassTint");

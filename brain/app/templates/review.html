@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import initials, cmd_card %}
+{% from "_macros.html" import initials, cmd_card, face %}
 {% block title %}Review · {{ cfg.dashboard.app_name }}{% endblock %}
 {% block heading %}Review{% endblock %}
 {% block subheading %}<div class="sub">Low-confidence or odd-looking extractions wait here for a yes or no</div>{% endblock %}
@@ -8,7 +8,7 @@
   {% for it in items %}{% set e = it.e %}
   <div class="card reviewcard" data-event="{{ e.event_id }}">
     <div class="row-flex">
-      <span class="avatar {{ 'mail' if e.source == 'mail' }}">{{ initials(e.sender_label) }}</span>
+      {{ face(e.sender_label, e.sender_handle) }}
       <div><b>{% if e.is_from_me %}You → {% endif %}{{ e.sender_label or e.sender_handle }}</b><div class="faint" style="font-size:12.5px" data-ago="{{ e.received_at }}">{{ e.received_at|localtime }}</div></div>
       {% if e.confidence is not none %}<span class="badge b-warn plain" style="margin-left:auto">confidence {{ "%.0f"|format(e.confidence * 100) }}%</span>{% endif %}
     </div>

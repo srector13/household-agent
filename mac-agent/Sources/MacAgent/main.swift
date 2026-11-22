@@ -62,7 +62,7 @@ usage: mac-agent [--config PATH] [--backfill N] [--once] [--request-permissions]
   --config PATH          config file (default ~/Library/Application Support/HouseholdAgent/config.json)
   --backfill N           resend the last N messages, then continue normally
   --once                 do one scan / delivery / command poll / heartbeat and exit
-  --request-permissions  ask for Reminders + Calendar access, check Full Disk Access, exit
+  --request-permissions  ask for Reminders + Calendar (+ Contacts) access, check Full Disk Access, exit
   --version              print version and exit
   --probe-reminderkit    check whether list sections + #tags (private ReminderKit) work on this Mac
       --write            also create a test reminder with section "Probe" and tag #haprobe, read it
@@ -132,7 +132,12 @@ func runMain() async -> Int32 {
         let flags = await eventKit.requestAccess()
         print("Reminders full access: \(flags.reminders ? "yes" : "NO")")
         print("Calendar full access:  \(flags.calendar ? "yes" : "NO")")
-        #else
+        #endif
+        #if canImport(Contacts)
+        let contactsOK = await SystemContactsSource().requestAccess()
+        print("Contacts access:       \(contactsOK ? "yes" : "no (optional — only used for the watched people's photos)")")
+        #endif
+        #if !canImport(EventKit)
         print("EventKit is not available on this platform")
         #endif
         let fda = checkFullDiskAccess(config)
@@ -166,8 +171,13 @@ func runMain() async -> Int32 {
 
     let organizer: ReminderOrganizer = config.useReminderKit ? ReminderKitOrganizer.platformDefault() : NoReminderOrganizer()
     if !config.useReminderKit { Log.info("ReminderKit disabled in config (use_reminderkit=false): sections/tags use the title fallback") }
+    #if canImport(Contacts)
+    let contacts: ContactsSource = SystemContactsSource()
+    #else
+    let contacts: ContactsSource = NoContactsSource()
+    #endif
     let agent = Agent(config: config, client: BrainClient(baseURL: baseURL, token: token), store: store,
-                      organizer: organizer, backfill: opts.backfill)
+                      organizer: organizer, contacts: contacts, backfill: opts.backfill)
     if opts.once {
         await agent.runOnce()
         return 0

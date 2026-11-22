@@ -9,9 +9,9 @@
     <key>CFBundleDisplayName</key>
     <string>Second Brain</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.3.0</string>
+    <string>0.6.0</string>
     <key>CFBundleVersion</key>
-    <string>3</string>
+    <string>6</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Second Brain turns your messages into reminders.</string>
     <key>NSRemindersUsageDescription</key>
@@ -20,5 +20,7 @@
     <string>Second Brain turns your messages into calendar events.</string>
     <key>NSCalendarsUsageDescription</key>
     <string>Second Brain turns your messages into calendar events.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>Second Brain shows your contacts' photos for the people you choose to watch.</string>
 </dict>
 </plist>

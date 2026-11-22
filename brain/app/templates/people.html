@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import face %}
+{% block title %}People · {{ cfg.dashboard.app_name }}{% endblock %}
+{% block heading %}People{% endblock %}
+{% block subheading %}<div class="sub">Who you're keeping track of — promises, gift ideas, and what you know</div>{% endblock %}
+{% block content %}
+{% set watched = people|rejectattr("mentioned")|list %}
+{% set mentioned = people|selectattr("mentioned")|list %}
+<div class="stack">
+  <div class="card list">
+    {% for p in watched %}{{ person_row(p) }}{% else %}
+    <div class="empty">{{ icon("users", 32) }}<div>Add people to watch in <a class="link" href="/settings#people">Settings</a>.</div></div>
+    {% endfor %}
+  </div>
+  {% if mentioned %}
+  <div>
+    <div class="group-h"><span>Also mentioned</span></div>
+    <div class="card list">{% for p in mentioned %}{{ person_row(p) }}{% endfor %}</div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% macro person_row(p) %}
+<a class="personrow {{ 'off' if not p.enabled }}" href="/people/{{ p.key }}">
+  {% if p.group %}<span class="avatar">{{ icon("users", 18) }}</span>{% else %}{{ face(p.label, p.handle, "", p.photo) }}{% endif %}
+  <div style="min-width:0">
+    <div class="t">{{ p.label }}{% if p.contact_name and p.contact_name != p.label %} <span class="faint" style="font-weight:400">· {{ p.contact_name }}</span>{% endif %}</div>
+    <div class="m">
+      {% set bits = [] %}
+      {% if p.promises %}{% set _ = bits.append("🤝 " ~ p.promises) %}{% endif %}
+      {% if p.waiting %}{% set _ = bits.append("⏳ " ~ p.waiting) %}{% endif %}
+      {% if p.todos %}{% set _ = bits.append("☑️ " ~ p.todos) %}{% endif %}
+      {% if p.gifts %}{% set _ = bits.append("🎁 " ~ p.gifts) %}{% endif %}
+      {% if p.facts %}{% set _ = bits.append("👤 " ~ p.facts) %}{% endif %}
+      {{ bits|join("  ") }}{% if bits and p.last %} · {% endif %}{% if p.last %}<span data-ago="{{ p.last }}"></span>{% elif not bits %}nothing yet{% endif %}
+    </div>
+  </div>
+  {{ icon("chevron-right", 16) }}
+</a>
+{% endmacro %}

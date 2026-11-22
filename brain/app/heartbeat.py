@@ -22,8 +22,16 @@ class Alerter:
         self.db = db
         self.http = http or httpx.AsyncClient(timeout=10)
 
-    async def send(self, kind: str, message: str) -> bool:
-        url = self.cfg.alerts.discord_webhook_url
+    SYSTEM_KINDS = {"agent_offline", "agent_online", "llm_down", "llm_up", "permission"}
+    push = None  # set by the app (push.Push)
+
+    async def send(self, kind: str, message: str, *, discord: bool = True) -> bool:
+        if self.push and kind in self.SYSTEM_KINDS:
+            try:
+                await self.push.send("system", self.cfg.dashboard.app_name, message.lstrip("🔴✅⚠️ "), url="/system")
+            except Exception as e:  # noqa: BLE001
+                log.warning("push for %s failed: %r", kind, e)
+        url = self.cfg.alerts.discord_webhook_url if discord else None
         delivered = False
         if url:
             try:

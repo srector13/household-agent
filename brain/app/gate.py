@@ -38,6 +38,8 @@ def allowlist_label(cfg: Config, ev: Event) -> tuple[bool, str | None]:
 
     if ev.source == "manual":
         return True, ev.sender_label or "Manual"
+    if ev.source == "capture":  # typed/dictated in the app: always mine
+        return True, "Me"
 
     sender = normalize_handle(ev.sender_handle)
     for entry in cfg.watch.imessage.allow:
@@ -51,7 +53,9 @@ def allowlist_label(cfg: Config, ev: Event) -> tuple[bool, str | None]:
 
 
 def self_chat(cfg: Config, ev: Event) -> bool:
-    """Is this my notes-to-self conversation (an allowlist entry marked "this is me")?"""
+    """Is this my notes-to-self conversation (an allowlist entry marked "this is me"), or a quick capture?"""
+    if ev.source == "capture":
+        return True
     if ev.source != "imessage":
         return False
     sender = normalize_handle(ev.sender_handle)

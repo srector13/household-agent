@@ -1,6 +1,6 @@
 [project]
 name = "household-brain"
-version = "0.8.0"
+version = "0.9.0"
 description = "Household agent brain: ingest messages, extract tasks with a local LLM, queue Apple Reminders/Calendar commands."
 requires-python = ">=3.12"
 dependencies = [
@@ -13,6 +13,7 @@ dependencies = [
   "python-multipart>=0.0.9",
   "imapclient>=3.0",
   "tzdata>=2024.1",
+  "pywebpush>=2.0",
 ]
 
 [project.optional-dependencies]

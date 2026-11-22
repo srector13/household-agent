@@ -65,3 +65,72 @@ def test_followups_and_late_promises_need_you(client, llm):
     client.app_state.db.execute("UPDATE items SET state = json_set(state, '$.due', ?) WHERE category='promise'", (day(-2),))
     t = client.get("/").text
     assert "Follow up with Bob" in t and "You promised Wife" in t
+
+
+def test_quick_capture_goes_through_notes_to_self(client, llm):
+    seen = {}
+
+    def responder(p):
+        seen["p"] = p
+        return extraction(reminder("Renew car registration"), act("save_to_collection", collection="someday",
+                                                                  title="Garage shelves"))
+    llm.responder = responder
+    r = client.post("/api/capture", headers=J, json={"text": "renew registration; idea: garage shelves", "sync": True}).json()
+    assert r["ok"] and r["result"] == "queued" and r["event_id"].startswith("capture:")
+    assert "New note I wrote to MYSELF" in seen["p"]
+    cmds = run_mac(client)
+    assert cmds[0]["payload"]["notes"].startswith("📝 Note to self") and cmds[0]["payload"]["tags"] == []
+    assert items(client)[0]["chat_key"] == "capture"
+    assert client.post("/api/capture", headers=J, json={"text": "  "}).status_code == 422
+    assert 'class="capture-btn"' in client.get("/").text
+
+
+def _snap(client, events=None, reminders=None):
+    return client.post("/api/agent/snapshot", headers=AUTH, json={"generated_at": datetime.now(TZ).isoformat(),
+                                                                   "events": events, "reminders": reminders})
+
+
+def test_full_picture_includes_my_own_icloud_items(client, llm):
+    now = datetime.now(TZ)
+    soon = now + timedelta(minutes=40)
+    r = _snap(client, events=[
+        {"id": "E1", "title": "Team standup", "start": soon.isoformat(), "end": (soon + timedelta(minutes=30)).isoformat(),
+         "calendar": "Work", "calendar_color": "#34C759"},
+        {"id": "E2", "title": "Made by brain", "start": soon.isoformat(), "end": soon.isoformat(), "ours": True},
+        {"id": "E3", "title": "Thanksgiving", "start": (now + timedelta(days=2)).replace(hour=0, minute=0).isoformat(),
+         "end": (now + timedelta(days=3)).replace(hour=0, minute=0).isoformat(), "all_day": True, "calendar": "Holidays"},
+    ], reminders=[
+        {"id": "R1", "title": "Renew passport", "list": "Personal", "due": day(-2)},
+        {"id": "R2", "title": "Take out recycling", "list": "Home", "due": day(1)},
+        {"id": "R3", "title": "Ours", "list": "Household", "due": day(0), "ours": True},
+    ]).json()
+    assert r == {"ok": True, "events": 3, "reminders": 3}
+    t = client.get("/").text
+    assert "Team standup" in t and "Up next" in t                 # my own calendar drives "Up next"
+    assert "Renew passport" in t and "Late" in t                   # overdue reminder of mine
+    assert "Take out recycling" in t and "Thanksgiving" in t
+    assert "Made by brain" not in t and ">Ours<" not in t         # Second Brain's own are not doubled
+    assert 'data-ext="R2"' in t
+    # null = that kind wasn't readable this time: keep the previous data
+    _snap(client, events=None, reminders=[])
+    t = client.get("/").text
+    assert "Team standup" in t and "Renew passport" not in t
+
+
+def test_tick_off_my_own_reminder(client):
+    _snap(client, events=[], reminders=[{"id": "R9", "title": "Call grandma", "list": "Personal", "due": day(0)}])
+    r = client.post("/api/external/R9/done", headers=J).json()
+    assert r["ok"]
+    cmd = run_mac(client)[0]
+    assert cmd["op"] == "update_item" and cmd["payload"] == {"apple_item_id": "R9", "tag": None, "kind": "reminder",
+                                                            "changes": {"completed": True}, "notes_append": None}
+    assert "Call grandma" not in client.get("/").text
+
+
+def test_morning_briefing_mentions_my_calendar(client, llm, alerter):
+    later = datetime.now(TZ).replace(hour=23, minute=0)
+    _snap(client, events=[{"id": "E5", "title": "Book club", "start": later.isoformat(),
+                           "end": (later + timedelta(minutes=30)).isoformat(), "calendar": "Personal"}], reminders=[])
+    llm.json_responder = lambda name, m: RuntimeError("scores")
+    client.post("/api/today/repick", headers=J)
+    assert "📅 Also today: Book club" in alerter.sent[-1][1]

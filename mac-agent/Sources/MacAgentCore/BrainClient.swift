@@ -157,6 +157,24 @@ public final class BrainClient: Sendable {
         return (try? Wire.decoder().decode(ItemStatusAck.self, from: data)) ?? ItemStatusAck(ok: true, updated: nil)
     }
 
+    /// POST /api/agent/snapshot. Throws BrainError(status: 404) on a brain that predates it.
+    public func postSnapshot(_ snapshot: CalendarSnapshot) async throws {
+        let body = try Wire.encoder().encode(snapshot)
+        let (data, status) = try await send(request("api/agent/snapshot", method: "POST", body: body, timeout: 30))
+        guard (200..<300).contains(status) else {
+            throw BrainError("snapshot: HTTP \(status): \(Self.snippet(data))", status: status)
+        }
+    }
+
+    /// POST /api/agent/avatars. Throws BrainError(status: 404) on a brain that predates it.
+    public func postAvatars(_ people: [AvatarPerson]) async throws {
+        let body = try Wire.encoder().encode(AvatarBatch(people: people))
+        let (data, status) = try await send(request("api/agent/avatars", method: "POST", body: body, timeout: 30))
+        guard (200..<300).contains(status) else {
+            throw BrainError("avatars: HTTP \(status): \(Self.snippet(data))", status: status)
+        }
+    }
+
     /// GET /api/agent/config — the brain-managed allowlist. Throws BrainError(status: 404) on a
     /// brain that predates the endpoint.
     public func fetchAgentConfig() async throws -> RemoteAgentConfig {

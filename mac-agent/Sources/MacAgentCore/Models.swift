@@ -380,11 +380,14 @@ public struct Heartbeat: Codable, Equatable, Sendable {
     public var allowlistSize: Int
     /// nil = never probed; true = ReminderKit sections + tags usable on this macOS; false = not available.
     public var reminderkitOk: Bool?
+    /// Contacts access (for the watched people's photos and names).
+    public var contactsOk: Bool
 
     public init(agentVersion: String = AgentInfo.version, lastRowid: Int64, fdaOk: Bool, remindersOk: Bool,
                 calendarOk: Bool, uptimeS: Int, bufferedEvents: Int, allowlistVersion: Int? = nil,
-                allowlistSize: Int = 0, reminderkitOk: Bool? = nil) {
+                allowlistSize: Int = 0, reminderkitOk: Bool? = nil, contactsOk: Bool = false) {
         self.reminderkitOk = reminderkitOk
+        self.contactsOk = contactsOk
         self.agentVersion = agentVersion
         self.lastRowid = lastRowid
         self.fdaOk = fdaOk
@@ -398,7 +401,7 @@ public struct Heartbeat: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case agentVersion, lastRowid, fdaOk, remindersOk, calendarOk, uptimeS, bufferedEvents
-        case allowlistVersion, allowlistSize, reminderkitOk
+        case allowlistVersion, allowlistSize, reminderkitOk, contactsOk
     }
 
     public init(from decoder: Decoder) throws {
@@ -413,6 +416,7 @@ public struct Heartbeat: Codable, Equatable, Sendable {
         allowlistVersion = try c.decodeIfPresent(Int.self, forKey: .allowlistVersion)
         allowlistSize = try c.decodeIfPresent(Int.self, forKey: .allowlistSize) ?? 0
         reminderkitOk = try c.decodeIfPresent(Bool.self, forKey: .reminderkitOk)
+        contactsOk = try c.decodeIfPresent(Bool.self, forKey: .contactsOk) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -427,5 +431,6 @@ public struct Heartbeat: Codable, Equatable, Sendable {
         try c.encode(allowlistVersion, forKey: .allowlistVersion)  // explicit null when unsynced
         try c.encode(allowlistSize, forKey: .allowlistSize)
         try c.encode(reminderkitOk, forKey: .reminderkitOk)  // explicit null when never probed
+        try c.encode(contactsOk, forKey: .contactsOk)
     }
 }

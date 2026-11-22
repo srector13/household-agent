@@ -1,4 +1,5 @@
 #if canImport(EventKit)
+import CoreGraphics
 import EventKit
 import Foundation
 
@@ -107,6 +108,78 @@ public actor EventKitService: ItemStore {
                                        start: e.startDate.map { AppleDate.iso8601($0, timeZone: timeZone) },
                                        end: e.endDate.map { AppleDate.iso8601($0, timeZone: timeZone) }))
         }
+    }
+
+    // MARK: Calendar snapshot (full picture, not just our items)
+
+    public func calendarSnapshot(rangeDays: Int, now: Date) async -> SnapshotParts {
+        store.refreshSourcesIfNecessary()
+        let horizon = now.addingTimeInterval(TimeInterval(max(rangeDays, 1)) * 86_400)
+        return SnapshotParts(events: snapshotEvents(from: now.addingTimeInterval(-2 * 3600), to: horizon),
+                             reminders: await snapshotReminders(from: now.addingTimeInterval(-30 * 86_400), to: horizon))
+    }
+
+    /// nil when Calendar is unreadable (no access or store not loaded yet).
+    private func snapshotEvents(from start: Date, to end: Date) -> [SnapshotEvent]? {
+        guard Self.hasCalendarAccess() else { return nil }
+        let calendars = store.calendars(for: .event)
+        guard !store.sources.isEmpty, !calendars.isEmpty else { return nil }
+        // predicateForEvents expands recurring events into their occurrences.
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        var out: [SnapshotEvent] = []
+        var seen = Set<String>()
+        for e in store.events(matching: predicate) where e.status != .canceled {
+            guard let s = e.startDate, let en = e.endDate else { continue }
+            let base = e.calendarItemIdentifier
+            let startISO = AppleDate.iso8601(s, timeZone: timeZone)
+            // Occurrences of a recurring event share one identifier; make each entry unique.
+            let id = e.hasRecurrenceRules ? "\(base)/\(startISO)" : base
+            guard seen.insert(id).inserted else { continue }
+            out.append(SnapshotEvent(
+                id: id, title: e.title ?? "", start: startISO, end: AppleDate.iso8601(en, timeZone: timeZone),
+                allDay: e.isAllDay, calendar: e.calendar?.title ?? "",
+                calendarColor: Self.hex(e.calendar?.cgColor), location: Self.nonEmpty(e.location),
+                ours: CalendarSnapshot.isOurs(notes: e.notes)))
+        }
+        return out
+    }
+
+    /// Incomplete reminders due in the window (no-due reminders excluded). nil when unreadable.
+    private func snapshotReminders(from start: Date, to end: Date) async -> [SnapshotReminder]? {
+        guard Self.hasRemindersAccess() else { return nil }
+        guard !store.sources.isEmpty, !store.calendars(for: .reminder).isEmpty else { return nil }
+        let store = self.store
+        let predicate = store.predicateForIncompleteReminders(withDueDateStarting: start, ending: end, calendars: nil)
+        // Convert inside the callback: EKReminder isn't Sendable.
+        let rows: [SnapshotReminder]? = await withCheckedContinuation { (c: CheckedContinuation<[SnapshotReminder]?, Never>) in
+            _ = store.fetchReminders(matching: predicate) { reminders in
+                guard let reminders else { c.resume(returning: nil); return }
+                c.resume(returning: reminders.compactMap { r -> SnapshotReminder? in
+                    guard let comps = r.dueDateComponents, let y = comps.year, let m = comps.month, let d = comps.day
+                    else { return nil }
+                    var dueTime: String?
+                    if let h = comps.hour { dueTime = String(format: "%02d:%02d", h, comps.minute ?? 0) }
+                    return SnapshotReminder(
+                        id: r.calendarItemIdentifier, title: r.title ?? "", list: r.calendar?.title ?? "",
+                        listColor: Self.hex(r.calendar?.cgColor), due: String(format: "%04d-%02d-%02d", y, m, d),
+                        dueTime: dueTime, priority: r.priority, ours: CalendarSnapshot.isOurs(notes: r.notes))
+                })
+            }
+        }
+        return rows
+    }
+
+    private static func nonEmpty(_ s: String?) -> String? {
+        guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        return t
+    }
+
+    /// "#RRGGBB" from a calendar color, best effort (nil if it can't be converted to sRGB).
+    private static func hex(_ color: CGColor?) -> String? {
+        guard let color, let srgb = CGColorSpace(name: CGColorSpace.sRGB),
+              let c = color.converted(to: srgb, intent: .defaultIntent, options: nil),
+              let comps = c.components, comps.count >= 3 else { return nil }
+        return HexColor.from(red: Double(comps[0]), green: Double(comps[1]), blue: Double(comps[2]))
     }
 
     // MARK: Reminders

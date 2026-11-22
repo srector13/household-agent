@@ -191,6 +191,28 @@ actor FakeItemStore: ItemStore {
     }
 
     func permissionFlags() async -> (reminders: Bool, calendar: Bool) { (remindersAccess, calendarAccess) }
+
+    // Calendar snapshot knob
+    var snapshotParts = SnapshotParts()
+    var snapshotCalls = 0
+    func setSnapshot(_ p: SnapshotParts) { snapshotParts = p }
+    func calendarSnapshot(rangeDays: Int, now: Date) async -> SnapshotParts {
+        snapshotCalls += 1
+        return snapshotParts
+    }
+}
+
+/// Contacts stand-in: fixed cards, switchable authorization, counts lookups.
+actor FakeContactsSource: ContactsSource {
+    var authorized: Bool
+    var cards: [ContactCard]
+    var lookups = 0
+    init(authorized: Bool = true, cards: [ContactCard] = []) { self.authorized = authorized; self.cards = cards }
+    func setCards(_ c: [ContactCard]) { cards = c }
+    func setAuthorized(_ v: Bool) { authorized = v }
+    func isAuthorized() async -> Bool { authorized }
+    func requestAccess() async -> Bool { authorized }
+    func contacts(matching handles: [String]) async throws -> [ContactCard] { lookups += 1; return cards }
 }
 
 /// Records what the executor asked to organize; can be unavailable or fail on apply.

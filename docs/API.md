@@ -161,7 +161,8 @@ longer exists is reported as `done`.
   "buffered_events": 0,
   "allowlist_version": 7,
   "allowlist_size": 3,
-  "reminderkit_ok": true
+  "reminderkit_ok": true,
+  "contacts_ok": true
 }
 ```
 - `allowlist_version`: `settings_version` of the allowlist the agent is filtering with, or
@@ -169,6 +170,8 @@ longer exists is reported as `done`.
 - `allowlist_size`: number of handles + chat ids in the active prefilter.
 - `reminderkit_ok`: `true` = sections + tags work on this Mac (private ReminderKit), `false` = not
   available (title fallback in use), `null` = not probed yet.
+- `contacts_ok`: Contacts access granted (optional; only used for contact photos). Agents
+  before 0.6.0 omit it.
 
 Response `200 {"ok": true, "settings_version": 7}`. When `settings_version` differs from the
 agent's cached `allowlist_version`, the agent refetches `GET /api/agent/config`.
@@ -236,6 +239,62 @@ Batches of ≤200:
   `start`/`end` for events. Unset values are explicit `null`; `found_id` is omitted when unused.
 
 Response `200 {"ok": true, "updated": n}`.
+
+## POST /api/agent/snapshot  (full calendar picture, agent ≥ 0.6.0)
+
+Everything on the user's calendars and reminder lists for the coming days — not only items the
+brain created — so the app can show a complete "Up next" / "Coming up". Sent after every
+completion-sync run that reached the brain (same cadence, including the debounced run after
+commands); replaces the brain's previous snapshot.
+
+```json
+{"generated_at": "2026-11-22T08:00:00-06:00", "range_days": 7,
+ "events": [{"id": "x-apple-...", "title": "Dentist", "start": "2026-11-24T09:00:00-06:00",
+             "end": "2026-11-24T10:00:00-06:00", "all_day": false, "calendar": "Family",
+             "calendar_color": "#FF2D55", "location": null, "ours": false}],
+ "reminders": [{"id": "x-apple-...", "title": "Pick up eggs", "list": "Groceries",
+                "list_color": "#34C759", "due": "2026-11-22", "due_time": "17:00",
+                "priority": 0, "ours": true}]}
+```
+
+- `events`: all calendars, from now − 2 h to now + `range_days`, recurring events expanded into
+  occurrences, canceled events skipped, sorted by `start`, ≤400. Occurrences of a recurring event
+  share an Apple identifier, so their `id` is `"<calendarItemIdentifier>/<start>"`; one-off events
+  use the plain identifier.
+- `reminders`: incomplete reminders with a due date from now − 30 days (overdue) to now +
+  `range_days`; reminders without a due date are not sent. Sorted by due, ≤400. `due_time` is
+  `null` for date-only reminders; `priority` is EventKit's 0 (none) / 1–9 (1 = high).
+- `ours`: the item's notes contain a `[ha:` tag (created by Second Brain).
+- Times are ISO 8601 with the Mac's local offset; colors are `#RRGGBB` (best effort, else `null`).
+- A kind the agent cannot read (no permission, store not loaded) is sent as `null` = "keep what
+  you had", never `[]`. If neither is readable nothing is posted.
+- A `404` turns snapshots off until the agent restarts; other errors retry next run.
+
+Response `200 {"ok": true}`.
+
+## POST /api/agent/avatars  (contact photos, agent ≥ 0.6.0)
+
+Names and photos from the Mac's Contacts for the synced allowlist `handles` (chat ids are not
+included). Nothing else from Contacts is read or sent.
+
+```json
+{"people": [{"handle": "+17855550000", "name": "Sam Rivera",
+             "image": "<base64 JPEG>", "image_hash": "3f78…(sha1 hex of the JPEG)"},
+            {"handle": "someone@icloud.com", "name": null, "image": null, "image_hash": null}]}
+```
+
+- One entry per allowlisted handle (normalized as in `/api/agent/config`); no matching contact →
+  `name`/`image`/`image_hash` are `null`. Matching: phone numbers normalized the same way, emails
+  case-insensitively.
+- `image`: the contact thumbnail (or the full photo downscaled), ≤256 px JPEG, ≤96 KB before base64;
+  bigger → `null`.
+- Sent when the allowlist changes, at startup once an allowlist is known, and every 24 h — but only
+  if some handle, name or photo changed since the last successful post (the agent keeps a
+  fingerprint in `avatars.json`). The full list is sent each time; it replaces the previous one.
+- Without Contacts access the agent sends nothing (heartbeat `contacts_ok: false`). A `404` turns
+  this off until the agent restarts.
+
+Response `200 {"ok": true}`.
 
 ## Dashboard / debugging (no agent token; protect with Tailscale)
 

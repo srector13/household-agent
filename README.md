@@ -103,18 +103,41 @@ tailscale serve --bg 8080        # → https://<host>.<tailnet>.ts.net
 2. On the iPhone, open the `https://` address in Safari → Share → **Add to Home Screen**.
 
 Offline, the app shows the last version of each page you opened; actions need the connection.
-Over plain `http://` it still installs and works, just without the offline cache. The Mac
-agent can keep using whichever address it already has.
+Over plain `http://` it still installs and works, just without the offline cache or notifications.
+The Mac agent can keep using whichever address it already has.
+
+**Notifications.** Open the installed app (not Safari) → Settings → **Notifications** → Turn on.
+iOS only allows this for a home-screen app served over `https://` (iOS 16.4+). You get:
+
+- **New items:** "Added to Reminders: Call the plumber · Tue · Sarah". Several things from one
+  message arrive as one notification.
+- **Today's three** in the morning and the evening recap.
+- **Review:** something needs a yes/no.
+- **Follow-ups**, the Sunday **weekly reset**, and **focus timers**.
+- **System problems:** the Mac is offline, the model is down, a permission is missing.
+
+Each kind has its own switch. Quiet hours (22:00–07:00 by default) hold everything except system
+problems and focus timers you started yourself. The app icon shows a **badge** with what's left
+today plus what needs review. Discord keeps working alongside; switch it off in the same section.
+
+**Quick capture.** The **+** button (or `n` on a keyboard) opens a sheet. Type or dictate anything
+and it's handled like a note to yourself.
+
+**Act from any list.** Swipe right to finish. Swipe left for **Later** (later today, this evening,
+tomorrow, this weekend, next week, or pick a date) and **Delete** (with Undo). Long-press or
+right-click for the same menu. Every change goes to Reminders/Calendar on your Mac.
 
 ## Dashboard
 
 | Page | What it's for |
 |---|---|
-| **Home** | At a glance: the next appointment with a countdown, today's three (tick them off right here — it syncs to Reminders), what needs you (review, follow-ups that are due, late promises), what's coming up, and what the brain just did. A warning only appears when something is actually wrong |
-| **Activity** | Every message with search and filters; each opens a step-by-step trace with Undo / Retry / Edit |
-| **Lists** | To-dos & events, collections (by person), and finished/cancelled items, each with its history |
+| **Home** | At a glance: the next appointment with a countdown, today's three (tap one to focus on it, swipe to finish or snooze), what needs you (review, follow-ups that are due, late promises), what's coming up, and what the brain just did. **Up next** and **Coming up** include your own iCloud calendars and reminders, not just what Second Brain added (tick those off here too). A warning only appears when something is actually wrong |
+| **People** | Everyone you watch, with their contact photo: what you promised them, what you're waiting on, their to-dos, gift ideas, things to remember and recent messages. People who only come up in messages ("Mom wants a bread maker") are listed too |
+| **Lists** | To-dos & events, collections (by person), and finished/cancelled items, each with its history. Swipe to finish, snooze or delete |
 | **Review** | Low-confidence items: Add or Skip |
+| **Activity** (More) | Every message with search and filters; each opens a step-by-step trace with Undo / Retry / Edit |
 | **Plan my days** (More) | Today's picks in detail, done today, and choosing tomorrow's three |
+| **Weekly reset** (More) | A 2-minute swipe through stale items: keep, schedule, done or drop |
 | **Status** (More) | The pipeline diagram, stats, 14-day chart, every component's health, queue, alerts, settings log, the prompt; Test lab lives at the bottom |
 | **Settings** (More) | People & chats, reminders, collections, daily rhythm, model, alerts, mail |
 
@@ -185,6 +208,21 @@ put a few things in front of you.
   **Today** view and posted to Discord. Everything else stays out of sight.
 - **Evening recap** (20:30): what got done, unfinished picks moved back to their old dates (no
   overdue pile), and tomorrow's suggestions. You can pick tomorrow's three on the **Today** page.
+- **Focus mode:** tap one of today's three (or **Focus** in the Today header) for a full-screen
+  view of that one task: its first step and steps to tick off, plus an optional 5/10/25-minute
+  timer. The screen stays awake. When time's up you get a notification that opens straight back into
+  focus, even if the app was closed. **Done** gives a little celebration and offers the next thing.
+  No first step yet? **Find a tiny first step** asks the model for one.
+- **Weekly reset:** on Sunday at 17:00 (change it in Settings → Daily rhythm) you get a nudge.
+  The Home card collects anything gone stale: late items, undated ones older than a week, and
+  anything untouched for two weeks. Swipe right to keep (it's left alone for a week), left to drop,
+  or tap **Schedule** / **Done**. Takes about two minutes.
+- **The full picture:** the Mac agent sends a snapshot of the next week of your calendars and
+  incomplete reminders. Up next and Coming up show your dentist appointment from iCloud next to
+  what Second Brain added. Your own items are only read, apart from ticking a reminder off.
+- **Faces:** with Contacts access, the Mac agent sends small contact photos for the people you watch.
+  They appear on People, Home, Activity and Review. Photos stay on your server, keyed by a hash so
+  phone numbers never appear in image URLs.
 - **Completion sync:** the Mac agent reports every few minutes which reminders you completed,
   edited or deleted on your phone. An item is only marked deleted after two reports in a row,
   and a report where most items vanish at once is ignored.

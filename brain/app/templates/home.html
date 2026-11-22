@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import initials %}
+{% from "_macros.html" import initials, face %}
 {% block title %}{{ cfg.dashboard.app_name }}{% endblock %}
 {% block heading %}{{ h.greeting }}{% endblock %}
 {% block subheading %}<div class="sub">{{ h.now.strftime("%A, %B %-d") }}{% if h.done_today %} · {{ h.done_today }} done today{% endif %}</div>{% endblock %}
@@ -12,7 +12,7 @@
   {% endfor %}
 
   {% if h.next %}{% set n = h.next %}
-  <a class="nextup {{ 'ev' if n.kind == 'event' else 'rem' }}" href="/events/{{ n.event_id|urlencode }}">
+  <a class="nextup {{ 'ev' if n.kind == 'event' else 'rem' }}" {% if n.event_id %}href="/events/{{ n.event_id|urlencode }}"{% endif %} {% if n.color %}style="--accent-bar:{{ n.color }}"{% endif %}>
     <div class="when"><b>{{ n.at.strftime("%-I:%M") }}</b><span>{{ n.at.strftime("%p") }}</span></div>
     <div style="min-width:0">
       <div class="label">{{ "Happening now" if n.ongoing else "Up next" }} · {{ n["in"] }}</div>
@@ -25,16 +25,18 @@
   <div>
     <div class="group-h"><span>Today</span>
       {% if h.picks %}<span class="right">{{ h.picks_left }} of {{ h.picks|length }} left</span>{% endif %}
+      {% if h.picks_left %}<button class="right link focus-go" onclick="focusFirst()">{{ icon("target", 14) }}Focus</button>{% endif %}
       <a class="right link" href="/today">Plan</a></div>
     <div class="card list">
-      {% for p in h.picks %}{% set done = p.status == "completed" %}{% set gone = p.status not in ("planned", "active", "completed") %}
-      <div class="pick {{ 'done' if done }} {{ 'gone' if gone }}" data-item="{{ p.item_id }}">
+      {% for p in h.picks %}{% set done = p.status == "completed" %}{% set gone = p.status not in ("planned", "active", "completed") or p.snoozed_to %}
+      <div class="pick {{ 'done' if done }} {{ 'gone' if gone }}" data-item="{{ p.item_id }}" {% if not gone and not done %}data-swipe data-collapse="no" data-id="{{ p.item_id }}" data-kind="{{ p.kind }}" data-title="{{ p.title }}"{% endif %}>
         {% if p.kind == "reminder" and not gone %}
         <button class="check {{ 'on' if done }}" aria-label="Done" data-id="{{ p.item_id }}" onclick="toggleDone(this)">{{ icon("check", 15) }}</button>
         {% else %}<span class="check ghosty">{{ icon("calendar" if p.kind == "event" else "x", 14) }}</span>{% endif %}
-        <div style="min-width:0">
+        <div style="min-width:0" {% if not gone and not done and p.kind == "reminder" %}class="focusable" role="button" tabindex="0" data-focus="{{ p.item_id }}"{% endif %}>
           <div class="t">{% if p.category == "promise" %}{{ icon("handshake", 15) }} {% elif p.category == "waiting" %}{{ icon("hourglass", 15) }} {% endif %}{{ p.title }}</div>
-          {% if p.why and not done %}<div class="why">{{ p.why }}</div>{% endif %}
+          {% if p.snoozed_to %}<div class="why">Moved to {{ "later" if p.snoozed_to == "someday" else p.snoozed_to|nicedate }}</div>
+          {% elif p.why and not done %}<div class="why">{{ p.why }}</div>{% endif %}
           {% if p.first_step and not done and not gone %}<div class="start">{{ icon("footprints", 14) }}<b>Start:</b> {{ p.first_step }}</div>{% endif %}
         </div>
       </div>
@@ -53,13 +55,21 @@
     </div>
   </div>
 
+  {% if weekly_count %}
+  <a class="weeklycard" href="/weekly">
+    <span class="tile t-green">{{ icon("sparkles", 18) }}</span>
+    <div style="min-width:0"><div class="t">Weekly reset</div><div class="m">{{ weekly_count }} thing{{ "s" if weekly_count != 1 }} gone stale · takes 2 minutes</div></div>
+    {{ icon("chevron-right", 16) }}
+  </a>
+  {% endif %}
+
   {% if att.count %}
   <div>
     <div class="group-h"><span>Needs you</span><span class="right">{{ att.count }}</span></div>
     <div class="card list">
       {% for r in att.reviews %}{% set e = r.e %}
       <div class="needrow" data-event="{{ e.event_id }}">
-        <span class="avatar sm {{ 'me' if e.is_from_me }}">{{ initials(e.sender_label) }}</span>
+        {{ face(e.sender_label, e.sender_handle, "sm") }}
         <a href="/events/{{ e.event_id|urlencode }}" style="min-width:0">
           <div class="t">{{ r.titles|join(", ") or "Check this message" }}</div>
           <div class="m">{{ e.sender_label }}: “{{ e.text[:80] }}{{ "…" if e.text|length > 80 }}”</div>
@@ -71,7 +81,7 @@
       </div>
       {% endfor %}
       {% for it in att.followups %}
-      <div class="needrow">
+      <div class="needrow" data-swipe data-id="{{ it.item_id }}" data-kind="{{ it.kind }}" data-title="{{ it.title }}">
         <button class="check" data-id="{{ it.item_id }}" onclick="toggleDone(this)" aria-label="Got it">{{ icon("check", 15) }}</button>
         <a href="/events/{{ it.origin_event_id|urlencode }}" style="min-width:0">
           <div class="t">{{ icon("hourglass", 14) }} Follow up with {{ it.person }}</div>
@@ -80,7 +90,7 @@
       </div>
       {% endfor %}
       {% for it in att.late %}
-      <div class="needrow">
+      <div class="needrow" data-swipe data-id="{{ it.item_id }}" data-kind="{{ it.kind }}" data-title="{{ it.title }}">
         <button class="check" data-id="{{ it.item_id }}" onclick="toggleDone(this)" aria-label="Done">{{ icon("check", 15) }}</button>
         <a href="/events/{{ it.origin_event_id|urlencode }}" style="min-width:0">
           <div class="t">{{ icon("handshake", 14) }} {{ it.title }}</div>
@@ -103,11 +113,22 @@
     <div class="group-h"><span>Coming up</span><a class="right link" href="/items">Lists</a></div>
     <div class="card list">
       {% for u in h.agenda %}
+      {% if u.external %}
+      <div class="up ext" {% if u.color %}style="--cal:{{ u.color }}"{% endif %}>
+        <div class="day"><span>{{ "Late" if u.late else "Today" if u.when.date() == h.now.date() else u.when.strftime("%a") }}</span><b>{{ u.when.day }}</b></div>
+        <div style="min-width:0;display:flex;gap:10px;align-items:center">
+          <div style="min-width:0;flex:1"><div class="t"><span class="caldot"></span>{{ u.title }}</div>
+            <div class="m">{% if not u.all_day %}{{ u.when.strftime("%-I:%M %p") }} · {% endif %}{{ u.where }}{% if u.location %} · {{ u.location }}{% endif %}</div></div>
+          {% if u.kind == "reminder" %}<button class="check" data-ext="{{ u.apple_id }}" onclick="tickExternal(this)" aria-label="Done">{{ icon("check", 15) }}</button>{% endif %}
+        </div>
+      </div>
+      {% else %}
       <a class="up" href="/events/{{ u.event_id|urlencode }}">
         <div class="day"><span>{{ "Today" if u.when.date() == h.now.date() else u.when.strftime("%a") }}</span><b>{{ u.when.day }}</b></div>
         <div style="min-width:0"><div class="t">{{ u.title }}</div>
           <div class="m">{% if not u.all_day %}{{ u.when.strftime("%-I:%M %p") }} · {% endif %}{{ u.where }}{% if u.who and u.who != "Me" %} · {{ u.who }}{% endif %}</div></div>
       </a>
+      {% endif %}
       {% endfor %}
     </div>
   </div>
@@ -145,20 +166,29 @@ async function toggleDone(btn) {
     }
   } catch (e) { btn.classList.toggle("on", !on); row && row.classList.toggle("done", !on); HA.toast(e.message, "bad"); }
 }
+async function tickExternal(btn) {
+  btn.classList.add("on"); btn.closest(".up").classList.add("done");
+  try { await HA.api("POST", `/api/external/${encodeURIComponent(btn.dataset.ext)}/done`); HA.toast("Done"); }
+  catch (e) { btn.classList.remove("on"); btn.closest(".up").classList.remove("done"); HA.toast(e.message, "bad"); }
+}
 function decide(btn, action) {
   HA.action(btn, action, btn.dataset.id, { done: action === "approve" ? "Added" : "Skipped", onDone: () => {
     const r = btn.closest(".needrow"); r.classList.add("gone"); setTimeout(() => r.remove(), 350); HA.refreshShell(); } });
 }
+function focusFirst() {
+  const f = document.querySelector("[data-focus]"); if (f && HA.focus) HA.focus(f.dataset.focus);
+}
+document.addEventListener("click", (e) => { const f = e.target.closest("[data-focus]"); if (f && HA.focus) HA.focus(f.dataset.focus); });
 async function planNow(btn) {
   HA.busy(btn, true);
   try { await HA.api("POST", "/api/today/repick"); location.reload(); } catch (e) { HA.toast(e.message, "bad"); HA.busy(btn, false); }
 }
 let reloadTimer;
 HA.on((d) => {
-  if (!(d.type === "daily" || d.type === "items" || d.status)) return;
+  if (!(d.type === "daily" || d.type === "items" || d.type === "snapshot" || d.status)) return;
   clearTimeout(reloadTimer);
-  reloadTimer = setTimeout(() => { if (!document.querySelector(".asheet") && !document.hidden) location.reload(); }, 1500);
+  reloadTimer = setTimeout(() => { if (!document.querySelector(".asheet, .focus") && !document.hidden) location.reload(); }, 1500);
 });
-document.addEventListener("visibilitychange", () => { if (!document.hidden) location.reload(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !document.querySelector(".focus")) location.reload(); });
 </script>
 {% endblock %}

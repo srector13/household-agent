@@ -23,6 +23,11 @@ from . import models as m
 from .backup import backup_if_due
 from .commands import Bus, CommandQueue
 from .daily import Daily
+from .external import External, Snapshot
+from .people import AvatarReport, People
+from .quick import Quick
+from .focus import Focus
+from .weekly import Weekly
 from .config import Config, load_raw
 from .extract import LLMClient, LLMError, VLLMClient, extract
 from .gate import gate, normalize_handle
@@ -52,7 +57,7 @@ AGENT_PATHS = ("/api/agent/", "/api/events")
 
 
 def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alerter: Alerter | None = None,
-               background: bool = True, base_raw: dict | None = None) -> FastAPI:
+               background: bool = True, base_raw: dict | None = None, push_sender=None) -> FastAPI:
     if cfg is None:
         base_raw = load_raw()
         cfg = Config.model_validate(base_raw)
@@ -66,6 +71,48 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
     pipeline = Pipeline(cfg, db, llm, queue, bus, alerter, health)
     health.on_llm_recovered = lambda: asyncio.create_task(pipeline.retry_received())
     daily = Daily(cfg, db, pipeline.items, queue, llm, alerter, bus)
+    from .push import Push
+    push = Push(cfg, db, sender=push_sender)
+    alerter.push = pipeline.push = daily.push = push
+    external = External(cfg, db)
+    daily.external = external
+    people = People(cfg, db)
+
+    def badge_count() -> int:
+        """App-icon badge: things waiting on you (today's unfinished picks + review)."""
+        plan = daily.plan(daily.today())
+        left = sum(1 for p in plan.get("picks", [])
+                   if (pipeline.items.get(p["item_id"]) or {}).get("status") in ("planned", "active"))
+        review = db.one("SELECT COUNT(*) n FROM events WHERE status=?", (m.NEEDS_REVIEW,))["n"]
+        return left + review
+
+    push.badge_fn = badge_count
+
+    def on_created(item: dict, cmd: dict) -> None:
+        st = item.get("state") or {}
+        who = item.get("person")
+        cat, col = item.get("category"), item.get("collection")
+        if col:
+            c = next((c for c in cfg.collections if c.key == col), None)
+            title, emoji = f"Saved to {c.label if c else col}", "🎁" if col == "gift_ideas" else "🔖"
+        elif cat == "promise":
+            title, emoji = "Promise tracked", "🤝"
+        elif cat == "waiting":
+            title, emoji = f"Waiting on {who}", "⏳"
+        elif item.get("kind") == "event":
+            title, emoji = "Added to Calendar", "📅"
+        else:
+            title, emoji = "Added to Reminders", "☑️"
+        when = ""
+        if item.get("kind") == "event" and st.get("start"):
+            when = " · " + datetime.fromisoformat(st["start"]).astimezone(cfg.tz).strftime(
+                "%a %b %-d" if st.get("all_day") else "%a %-I:%M %p")
+        elif st.get("due"):
+            when = " · " + datetime.fromisoformat(st["due"]).strftime("%a %b %-d")
+        line = f"{emoji} {item.get('title')}{when}" + (f" · {who}" if who and who != "Me" and cat != "waiting" else "")
+        push.added(cmd["event_id"], line, url=f"/events/{cmd['event_id']}", title=title)
+
+    pipeline.items.on_created = on_created
     state: dict[str, Any] = {"mail": None}
 
     def start_mail() -> None:
@@ -104,8 +151,10 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
                 asyncio.create_task(run_every(60, ping_llm, name="llm-ping")),
                 asyncio.create_task(run_every(600, lambda: backup_if_due(cfg, db), name="backup")),
                 asyncio.create_task(run_every(60, daily.tick, name="daily")),
+                asyncio.create_task(run_every(60, weekly.tick, name="weekly")),
             ]
             start_mail()
+            focus.resume()
         yield
         for t in tasks:
             t.cancel()
@@ -114,7 +163,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
 
     app = FastAPI(title="Second Brain", version=__version__, lifespan=lifespan)
     app.state.cfg, app.state.db, app.state.pipeline, app.state.queue = cfg, db, pipeline, queue
-    app.state.health, app.state.settings, app.state.daily = health, settings, daily
+    app.state.health, app.state.settings, app.state.daily, app.state.push = health, settings, daily, push
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
     env = templates.env
@@ -158,7 +207,8 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         c = next((c for c in cfg.collections if c.key == key), None)
         return c.label if c else (key or "")
 
-    env.globals.update(ref_title=ref_title, collection_label=collection_label)
+    env.globals.update(ref_title=ref_title, collection_label=collection_label,
+                       avatar_url=lambda h: people.avatar_url(h), photo_for=lambda label: people.photo_for_label(label))
     env.globals.update(badge=lambda s: STATUS_BADGE.get(s, (s, "muted")), version=__version__,
                        step_label=lambda s: STEP_LABEL.get(s, s), icon=icon)
 
@@ -229,6 +279,34 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         if n:
             bus.publish({"type": "items"})
         return {"ok": True, "updated": n}
+
+    @app.post("/api/agent/snapshot", dependencies=[Depends(agent_auth)])
+    async def agent_snapshot(snap: Snapshot):
+        counts = external.store(snap)
+        bus.publish({"type": "snapshot"})
+        return {"ok": True, **counts}
+
+    @app.post("/api/agent/avatars", dependencies=[Depends(agent_auth)])
+    async def agent_avatars(report: AvatarReport):
+        return {"ok": True, "stored": people.store_avatars(report)}
+
+    @app.get("/avatars/{key}.jpg", include_in_schema=False, dependencies=[Depends(dash_auth)])
+    async def avatar_image(key: str):
+        got = people.image(key)
+        if not got:
+            raise HTTPException(404)
+        return Response(got[0], media_type="image/jpeg", headers={"Cache-Control": "private, max-age=604800"})
+
+    @app.post("/api/external/{apple_id}/done", dependencies=[Depends(dash_auth)])
+    async def external_done(apple_id: str):
+        """Tick off one of your own reminders (not created by Second Brain)."""
+        db.insert_command(f"app:{daily.today().isoformat()}", "update_item",
+                          {"apple_item_id": apple_id, "tag": None, "kind": "reminder",
+                           "changes": {"completed": True}, "notes_append": None},
+                          "pending", purpose="complete", meta={"why": "ticked in the app", "external": True})
+        external.mark_done(apple_id)
+        await queue.wake()
+        return {"ok": True, "status": "completed"}
 
     @app.get("/api/agent/config", dependencies=[Depends(agent_auth)])
     async def agent_config():
@@ -318,6 +396,45 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         path = await backup_if_due(cfg, db, force=True)
         return {"ok": bool(path), "path": path}
 
+    # ---- quick capture ------------------------------------------------------------------------
+    @app.post("/api/capture", dependencies=[Depends(dash_auth)])
+    async def capture(body: dict = Body(...)):
+        import uuid
+        text = str(body.get("text") or "").strip()
+        if not text:
+            return JSONResponse({"ok": False, "error": "Type something first."}, status_code=422)
+        ev = Event(event_id=f"capture:{uuid.uuid4().hex[:12]}", source="capture", sender_handle="", sender_label="Me",
+                   is_from_me=True, received_at=datetime.now(cfg.tz), text=text[:4000])
+        res = await pipeline.ingest(ev, sync=bool(body.get("sync")))
+        return {"ok": True, **res}
+
+    # ---- notifications ------------------------------------------------------------------------
+    @app.get("/api/push/key", dependencies=[Depends(dash_auth)])
+    async def push_key():
+        return {"public_key": push.public_key, "devices": len(push.devices())}
+
+    @app.post("/api/push/subscribe", dependencies=[Depends(dash_auth)])
+    async def push_subscribe(request: Request, body: dict = Body(...)):
+        try:
+            push.subscribe(body.get("subscription") or body, request.headers.get("user-agent"))
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=422)
+        return {"ok": True, "devices": len(push.devices())}
+
+    @app.post("/api/push/unsubscribe", dependencies=[Depends(dash_auth)])
+    async def push_unsubscribe(body: dict = Body(default={})):
+        push.unsubscribe(body.get("endpoint"))
+        return {"ok": True, "devices": len(push.devices())}
+
+    @app.post("/api/push/test", dependencies=[Depends(dash_auth)])
+    async def push_test():
+        n = await push.send("test", cfg.dashboard.app_name, "Notifications work. 🎉", url="/")
+        return {"ok": n > 0, "sent": n, "error": None if n else "No device accepted it — turn notifications on first."}
+
+    @app.get("/api/badge", dependencies=[Depends(dash_auth)])
+    async def badge():
+        return {"count": badge_count()}
+
     # ---- today / daily ------------------------------------------------------------------------
     @app.post("/api/today/{what}", dependencies=[Depends(dash_auth)])
     async def today_action(what: str, body: dict = Body(default={})):
@@ -345,7 +462,10 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
     @app.post("/api/items/{item_id}/done", dependencies=[Depends(dash_auth)])
     async def item_done(item_id: str, body: dict = Body(default={})):
         try:
-            return {"ok": True, **(await daily.set_done(item_id, bool(body.get("done", True))))}
+            out = await daily.set_done(item_id, bool(body.get("done", True)))
+            if body.get("done", True) and (focus.timer() or {}).get("item_id") == item_id:
+                focus.stop()
+            return {"ok": True, **out}
         except ValueError as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
 
@@ -355,6 +475,66 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
             return {"ok": True, **(await daily.breakdown(item_id))}
         except (ValueError, LLMError) as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=422)
+
+    quick = app.state.quick = Quick(daily)
+    focus = app.state.focus = Focus(cfg, db, pipeline.items, daily, push)
+    weekly = app.state.weekly = Weekly(cfg, db, pipeline.items, daily, push)
+
+    @app.post("/api/weekly/{item_id}/keep", dependencies=[Depends(dash_auth)])
+    async def weekly_keep(item_id: str):
+        try:
+            weekly.keep(item_id)
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
+        return {"ok": True}
+
+    @app.post("/api/weekly/finish", dependencies=[Depends(dash_auth)])
+    async def weekly_finish(body: dict = Body(default={})):
+        return {"ok": True, **weekly.finish(body.get("counts") or {})}
+
+    @app.get("/api/focus/{item_id}", dependencies=[Depends(dash_auth)])
+    async def focus_details(item_id: str):
+        try:
+            return {"ok": True, **focus.details(item_id)}
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
+
+    @app.post("/api/focus/timer", dependencies=[Depends(dash_auth)])
+    async def focus_timer(body: dict = Body(default={})):
+        if body.get("stop"):
+            focus.stop()
+            return {"ok": True, "timer": None}
+        try:
+            return {"ok": True, "timer": focus.start(str(body.get("item_id", "")), int(body.get("minutes", 10)))}
+        except (ValueError, TypeError) as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=422)
+
+    @app.get("/api/items/{item_id}/snooze-options", dependencies=[Depends(dash_auth)])
+    async def item_snooze_options(item_id: str):
+        it = pipeline.items.get(item_id)
+        if not it:
+            raise HTTPException(404, "unknown item")
+        return {"kind": it["kind"], "title": it["title"], "options": quick.snooze_options(item=it),
+                "due": it["state"].get("due"), "due_time": it["state"].get("due_time"), "start": it["state"].get("start")}
+
+    @app.post("/api/items/{item_id}/{what}", dependencies=[Depends(dash_auth)])
+    async def item_quick(item_id: str, what: str, body: dict = Body(default={})):
+        try:
+            if what == "snooze":
+                out = quick.snooze(item_id, str(body.get("key", "")))
+            elif what == "reschedule":
+                out = quick.reschedule(item_id, body.get("due") or None, body.get("due_time") or None,
+                                       start=body.get("start") or None)
+            elif what == "delete":
+                out = quick.delete(item_id)
+            elif what == "restore":
+                out = quick.restore(item_id)
+            else:
+                raise HTTPException(404)
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=422)
+        await quick.wake()
+        return {"ok": True, **out}
 
     # ---- pages -------------------------------------------------------------------------------
     def page(request: Request, name: str, nav: str, **ctx: Any) -> HTMLResponse:
@@ -366,8 +546,9 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
     @app.get("/", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
     async def home_page(request: Request):
         from .home import home
-        return page(request, "home.html", "home",
-                    h=home(db, cfg, daily, pipeline.items, health.snapshot(queue.depth())))
+        reset = len(weekly.stale()) if weekly.due() else 0
+        return page(request, "home.html", "home", weekly_count=reset,
+                    h=home(db, cfg, daily, pipeline.items, health.snapshot(queue.depth()), external))
 
     @app.get("/today", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
     async def today_page(request: Request):
@@ -383,6 +564,21 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         return page(request, "today.html", "today", day=day, plan=plan, picks=picks, done=daily.done_on(day),
                     events=daily.events_on(day), candidates=daily.candidates(datetime.now(cfg.tz), limit=15),
                     tomorrow_chosen=chosen, tomorrow_locked=bool(tomorrow.get("preselected")))
+
+    @app.get("/weekly", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def weekly_page(request: Request):
+        return page(request, "weekly.html", "weekly", cards=weekly.stale(), last=weekly.last())
+
+    @app.get("/people", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def people_page(request: Request):
+        return page(request, "people.html", "people", people=people.roster())
+
+    @app.get("/people/{key}", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
+    async def person_page(request: Request, key: str):
+        p = people.find(key)
+        if not p:
+            raise HTTPException(404, "unknown person")
+        return page(request, "person.html", "people", p=p, d=people.detail(p, pipeline.items))
 
     @app.get("/activity", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
     async def activity_page(request: Request, status: str | None = None, q: str | None = None,

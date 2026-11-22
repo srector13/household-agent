@@ -6,6 +6,8 @@ launchd, that:
 - watches `~/Library/Messages/chat.db` (read-only) and POSTs new messages to the brain,
 - long-polls the brain for commands and applies them to Reminders / Calendar via EventKit,
 - sends a heartbeat every 60 s (version, last ROWID, permission flags, outbox depth),
+- sends the brain a snapshot of the next week of calendar events + due reminders (all lists, not
+  just its own) and the Contacts names/photos of the people it watches,
 - optionally files reminders into list sections (column view) and #tags them via Apple's private
   ReminderKit, falling back to a "Person · Title" title when that isn't possible.
 
@@ -87,6 +89,10 @@ after every rebuild.
    The launchd-started agent is what needs the grant — check System Settings → Privacy & Security →
    Reminders / Calendars lists "Household Agent" / `mac-agent` and that the health panel on the
    dashboard shows `reminders_ok` and `calendar_ok`.
+
+3. **Contacts** (optional): only used to send the watched people's names and photos to the
+   brain. The agent asks on start (and `--request-permissions` asks too); without it photos are off
+   and the heartbeat shows `contacts_ok: false`.
 
 Never grant Full Disk Access to Terminal or a Python interpreter for this — only to the agent binary.
 
@@ -180,6 +186,18 @@ The agent only says an item is gone when it is sure (store loaded, full access);
 or EventKit errors just leave the item out. Older brains without these endpoints turn the feature off.
 `--once` also runs one sync.
 
+## Calendar snapshot & contact photos
+
+Right after each completion sync the agent also posts `POST /api/agent/snapshot`: every event on
+all calendars from 2 h ago to 7 days ahead (recurring ones expanded, canceled skipped) and every
+incomplete reminder due between 30 days ago and 7 days ahead, ≤400 each, with calendar/list names
+and colors and an `ours` flag for Second Brain's own items. A kind it can't read is sent as `null`
+so the brain keeps its last copy.
+
+For the people on the synced allowlist it posts `POST /api/agent/avatars` (name + ≤256 px JPEG
+thumbnail per handle) after the allowlist changes, at startup and daily — only when something
+changed (fingerprint in `avatars.json`). Older brains without these endpoints turn them off.
+
 ## ReminderKit (sections + tags)
 
 Apple's public Reminders API (EventKit) can't put a reminder into a section or tag it. The agent
@@ -227,6 +245,7 @@ list in column view with `--keep`.
 | `~/Library/Application Support/HouseholdAgent/state.json` | checkpoint |
 | `~/Library/Application Support/HouseholdAgent/outbox.jsonl` | undelivered events |
 | `~/Library/Application Support/HouseholdAgent/synced_config.json` | last allowlist synced from the brain |
+| `~/Library/Application Support/HouseholdAgent/avatars.json` | fingerprint of the last contact photos sent |
 | `~/Library/Logs/HouseholdAgent/agent.log` | main log, rotated at 5 MB (`agent.log.1`–`.3`) |
 | `~/Library/Logs/HouseholdAgent/stderr.log` | launchd stderr (crashes only) |
 

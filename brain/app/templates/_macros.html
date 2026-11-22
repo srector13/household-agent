@@ -3,6 +3,12 @@
 {{- (parts[0][:1] ~ (parts[1][:1] if parts|length > 1 else "")).upper() if parts else "?" -}}
 {%- endmacro %}
 
+{% macro face(name, handle=None, cls="", photo=None) -%}
+{%- set url = photo or (avatar_url(handle) if handle else photo_for(name)) -%}
+{%- if url -%}<img class="avatar photo {{ cls }}" src="{{ url }}" alt="" loading="lazy">
+{%- else -%}<span class="avatar {{ cls }}">{{ initials(name) }}</span>{%- endif -%}
+{%- endmacro %}
+
 {% macro status_badge(s) -%}{% set b = badge(s) %}<span class="badge b-{{ b[1] }}">{{ b[0] }}</span>{%- endmacro %}
 
 {% macro action_pills(e) -%}

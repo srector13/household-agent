@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -150,13 +150,39 @@ class DailyConfig(BaseModel):
     count: int = Field(3, ge=1, le=7)
     today_view: bool = True   # move the picks into Reminders' Today view (due today); restored if not done
     discord: bool = True      # send the briefing and recap to Discord
+    weekly_day: Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"] = "sun"  # weekly reset nudge
+    weekly_time: str = "17:00"
 
-    @field_validator("morning_time", "evening_time")
+    @field_validator("morning_time", "evening_time", "weekly_time")
     @classmethod
     def _hhmm(cls, v: str) -> str:
         m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", v or "")
         if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
             raise ValueError("use a 24-hour time like 07:30")
+        return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+
+class PushConfig(BaseModel):
+    """iPhone notifications (Web Push to the installed app)."""
+    enabled: bool = True
+    daily: bool = True        # morning three + evening recap
+    review: bool = True       # something needs a yes/no
+    new_items: bool = True    # a reminder / event / saved note was just added
+    followups: bool = True    # waiting-on items that are due (in the morning push)
+    weekly: bool = True       # Sunday weekly-review nudge
+    system: bool = True       # Mac offline, model down, missing permission (ignores quiet hours)
+    discord_too: bool = True  # keep sending the daily briefing / review alerts to Discord as well
+    quiet_start: str = "22:00"
+    quiet_end: str = "07:00"
+
+    @field_validator("quiet_start", "quiet_end")
+    @classmethod
+    def _hhmm(cls, v: str) -> str:
+        if not v:
+            return ""
+        m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", v)
+        if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+            raise ValueError("use a 24-hour time like 22:00")
         return f"{int(m.group(1)):02d}:{m.group(2)}"
 
 
@@ -188,6 +214,7 @@ class Config(BaseModel):
     rules: RulesConfig = Field(default_factory=RulesConfig)
     collections: list[Collection] = Field(default_factory=lambda: [c.model_copy() for c in DEFAULT_COLLECTIONS])
     daily: DailyConfig = Field(default_factory=DailyConfig)
+    push: PushConfig = Field(default_factory=PushConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)

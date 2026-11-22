@@ -93,7 +93,7 @@ final class ModelsTests: XCTestCase {
         let o = try jsonObject(Heartbeat(lastRowid: 48213, fdaOk: true, remindersOk: true, calendarOk: false,
                                          uptimeS: 3600, bufferedEvents: 2))
         XCTAssertEqual(Set(o.keys), ["agent_version", "last_rowid", "fda_ok", "reminders_ok", "calendar_ok",
-                                     "uptime_s", "buffered_events", "allowlist_version", "allowlist_size", "reminderkit_ok"])
+                                     "uptime_s", "buffered_events", "allowlist_version", "allowlist_size", "reminderkit_ok", "contacts_ok"])
         XCTAssertEqual(o["last_rowid"] as? Int, 48213)
     }
 

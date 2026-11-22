@@ -24,11 +24,15 @@ public protocol ItemStore: Sendable {
     func itemStatus(id: String, kind: ItemKind) async -> ItemLookup
     /// Called before a status sync so changes made on other devices (iCloud) are visible.
     func refreshForStatusSync() async
+    /// Everything on the calendars/lists for the full-picture snapshot (see Snapshot.swift). A kind
+    /// that can't be read right now (no permission, store not loaded, fetch failed) is nil.
+    func calendarSnapshot(rangeDays: Int, now: Date) async -> SnapshotParts
 }
 
 extension ItemStore {
     public func itemStatus(id: String, kind: ItemKind) async -> ItemLookup { .unknown("not supported") }
     public func refreshForStatusSync() async {}
+    public func calendarSnapshot(rangeDays: Int, now: Date) async -> SnapshotParts { SnapshotParts() }
 }
 
 /// Applies brain commands to an ItemStore, enforcing tag-based idempotency.

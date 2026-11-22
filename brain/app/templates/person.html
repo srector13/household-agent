@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import face %}
+{% block title %}{{ p.label }} · {{ cfg.dashboard.app_name }}{% endblock %}
+{% block back %}<a class="nav-back" href="/people" aria-label="Back to People">{{ icon("chevron-left", 24) }}<span class="lbl">People</span></a>{% endblock %}
+{% block heading %}{{ p.label }}{% endblock %}
+{% block content %}
+<div class="stack">
+  <div class="personhero">
+    {% if p.group %}<span class="avatar xl">{{ icon("users", 40) }}</span>{% else %}{{ face(p.label, p.handle, "xl", p.photo) }}{% endif %}
+    <div class="m">{% if p.contact_name and p.contact_name != p.label %}{{ p.contact_name }} · {% endif %}{% if p.last %}last message <span data-ago="{{ p.last }}"></span>{% elif p.mentioned %}mentioned in your messages{% endif %}</div>
+  </div>
+
+  {% macro rows(items, kind) %}
+    {% for it in items %}{% set st = it.state %}
+    <div class="needrow" {% if kind != "done" %}data-swipe data-id="{{ it.item_id }}" data-kind="{{ it.kind }}" data-title="{{ it.title }}"{% endif %}>
+      {% if kind == "check" %}<button class="check" data-id="{{ it.item_id }}" onclick="toggleDone(this)" aria-label="Done">{{ icon("check", 15) }}</button>
+      {% else %}<span class="check ghosty">{{ icon({"gift": "gift", "fact": "bookmark", "other": "bookmark", "done": "check"}[kind], 15) }}</span>{% endif %}
+      <a href="/events/{{ it.origin_event_id|urlencode }}" style="min-width:0">
+        <div class="t" style="{{ 'text-decoration:line-through;color:var(--gray)' if kind == 'done' }}">{{ it.title }}</div>
+        <div class="m">{% if st.due %}{{ "expected" if it.category == "waiting" else "due" }} {{ st.due|nicedate }} · {% endif %}{% if st.start %}{{ st.start|localtime }} · {% endif %}{% if kind == "other" %}{{ collection_label(it.collection) }} · {% endif %}<span data-ago="{{ it.created_at }}"></span></div>
+      </a>
+      {% if st.url %}<a class="btn sm" href="{{ st.url }}" target="_blank" rel="noopener">{{ icon("link", 14) }}</a>{% endif %}
+    </div>
+    {% endfor %}
+  {% endmacro %}
+
+  {% set sections = [
+    ("🤝 You promised " ~ p.label, d.promises, "check"),
+    ("⏳ Waiting on " ~ p.label, d.waiting, "check"),
+    ("☑️ To-dos from " ~ p.label, d.todos, "check"),
+    ("🎁 Gift ideas", d.gifts, "gift"),
+    ("👤 Things to remember", d.facts, "fact"),
+    ("🔖 Saved", d.other, "other"),
+  ] %}
+  {% set any_items = d.promises or d.waiting or d.todos or d.gifts or d.facts or d.other %}
+  {% for title, items, kind in sections %}{% if items %}
+  <div>
+    <div class="group-h"><span>{{ title }}</span><span class="right">{{ items|length }}</span></div>
+    <div class="card list">{{ rows(items, kind) }}</div>
+  </div>
+  {% endif %}{% endfor %}
+  {% if not any_items %}<div class="card empty">Nothing open with {{ p.label }} right now.</div>{% endif %}
+
+  {% if d.messages %}
+  <div>
+    <div class="group-h"><span>Recent messages</span></div>
+    <div class="card card-b" style="display:grid;gap:6px">
+      {% for msg in d.messages|reverse %}
+      <a class="bubble {{ 'mine' if msg.is_from_me }}" href="/events/{{ msg.event_id|urlencode }}">{% if msg.subject %}<b>{{ msg.subject }}</b> {% endif %}{{ msg.text[:220] }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if d.done %}
+  <div>
+    <div class="group-h"><span>Done lately</span></div>
+    <div class="card list">{{ rows(d.done, "done") }}</div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function toggleDone(btn) {
+  const on = !btn.classList.contains("on"); btn.classList.toggle("on", on); btn.closest(".needrow").classList.toggle("done", on);
+  try { await HA.api("POST", `/api/items/${encodeURIComponent(btn.dataset.id)}/done`, { done: on }); if (on) HA.toast("Done"); }
+  catch (e) { btn.classList.toggle("on", !on); btn.closest(".needrow").classList.toggle("done", !on); HA.toast(e.message, "bad"); }
+}
+</script>
+{% endblock %}

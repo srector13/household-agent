@@ -35,8 +35,10 @@ EDITABLE: dict[str, Any] = {
     "alerts": {"discord_webhook_url": True, "heartbeat_timeout_s": True},
     "dashboard": {"public_url": True, "app_name": True},
     "collections": True,
+    "push": {"enabled": True, "daily": True, "review": True, "new_items": True, "followups": True, "weekly": True,
+             "system": True, "discord_too": True, "quiet_start": True, "quiet_end": True},
     "daily": {"enabled": True, "morning_time": True, "evening_time": True, "count": True, "today_view": True,
-              "discord": True},
+              "discord": True, "weekly_day": True, "weekly_time": True},
 }
 SECRETS = {("llm", "api_key"), ("watch", "mail", "password"), ("alerts", "discord_webhook_url")}
 

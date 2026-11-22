@@ -18,9 +18,13 @@ def _greeting(now: datetime) -> str:
     return "Good morning" if 4 <= h < 12 else "Good afternoon" if h < 17 else "Good evening"
 
 
-def _now_card(db: DB, cfg: Config, now: datetime) -> dict[str, Any] | None:
-    """The next thing with a clock time today: an event (or one in progress), else a timed reminder."""
+def _now_card(db: DB, cfg: Config, now: datetime, external=None) -> dict[str, Any] | None:
+    """The next thing with a clock time today: an event (or one in progress), else a timed reminder.
+    Includes your own iCloud calendars/reminders (external), not only what Second Brain created."""
     best = None
+    for cand in (external.next_candidates(now) if external else []):
+        if best is None or cand["at"] < best["at"]:
+            best = cand
     end_of_day = datetime.combine(now.date() + timedelta(days=1), time(0), cfg.tz)
     for r in db.all("SELECT * FROM items WHERE status IN ('planned','active') AND collection IS NULL"):
         st = json.loads(r["state"])
@@ -95,7 +99,8 @@ def _recent(db: DB, cfg: Config, limit: int = 6) -> list[dict[str, Any]]:
     return out
 
 
-def home(db: DB, cfg: Config, daily: Daily, items: Items, health_snapshot: dict[str, Any]) -> dict[str, Any]:
+def home(db: DB, cfg: Config, daily: Daily, items: Items, health_snapshot: dict[str, Any],
+         external=None) -> dict[str, Any]:
     now = datetime.now(cfg.tz)
     plan = daily.plan(now.date())
     picks = []
@@ -103,11 +108,16 @@ def home(db: DB, cfg: Config, daily: Daily, items: Items, health_snapshot: dict[
         it = items.get(p["item_id"])
         picks.append({**p, "status": it["status"] if it else "gone", "kind": (it or {}).get("kind", "reminder")})
     picked_ids = {p["item_id"] for p in picks}
-    nxt = _now_card(db, cfg, now)
+    nxt = _now_card(db, cfg, now, external)
     waiting = {r["item_id"] for r in db.all("SELECT item_id FROM items WHERE category='waiting'")}
     waiting.add((nxt or {}).get("item_id"))  # already shown big at the top
     agenda = [u for u in views.upcoming(db, cfg, days=3)
-              if u.get("item_id") not in picked_ids and u.get("item_id") not in waiting][:6]  # follow-ups live in "Needs you"
+              if u.get("item_id") not in picked_ids and u.get("item_id") not in waiting]  # follow-ups live in "Needs you"
+    if external:
+        skip = (nxt or {}).get("title"), (nxt or {}).get("at")
+        agenda += [u for u in external.agenda(now, 3) if (u["title"], u["when"]) != skip]
+    agenda.sort(key=lambda u: (u["when"].date(), u["all_day"] is False, u["when"]))
+    agenda = agenda[:8]
     problems = []
     a, llm = health_snapshot["agent"], health_snapshot["llm"]
     if not a.get("online"):
@@ -120,7 +130,7 @@ def home(db: DB, cfg: Config, daily: Daily, items: Items, health_snapshot: dict[
     hm = now.strftime("%H:%M")
     return {
         "now": now, "greeting": _greeting(now), "plan": plan, "picks": picks,
-        "picks_left": sum(1 for p in picks if p["status"] in ("planned", "active")),
+        "picks_left": sum(1 for p in picks if p["status"] in ("planned", "active") and not p.get("snoozed_to")),
         "next": nxt, "attention": _attention(db, items, cfg, now), "agenda": agenda,
         "recent": _recent(db, cfg), "done_today": len(daily.done_on(now.date())), "problems": problems,
         "evening": cfg.daily.enabled and hm >= cfg.daily.evening_time,

@@ -40,6 +40,7 @@ class Pipeline:
         self._inflight: set[str] = set()
         self._tasks: set[asyncio.Task] = set()
         self.items = Items(db, cfg)
+        self.push = None  # set by the app
         queue.items = self.items
         n = self.items.backfill()
         if n:
@@ -211,7 +212,11 @@ class Pipeline:
                 "needs_review",
                 f"📝 Needs review — {ev.sender_label or ev.sender_handle}: “{ev.text[:200]}”\n"
                 f"Proposed: {titles}\nWhy: {reason}\nApprove/reject: {link}",
+                discord=self.cfg.push.discord_too or not self.push,
             )
+            if self.push:
+                await self.push.send("review", f"Check this — {ev.sender_label or ev.sender_handle}",
+                                     f"{titles}\n“{ev.text[:120]}”", url="/review", tag=f"review:{ev.event_id}")
         else:
             self._set(ev.event_id, status=m.QUEUED, reason=None)
             await self.queue.wake()

@@ -4,15 +4,16 @@
 {% block subheading %}<div class="sub">Everything in Reminders and Calendar from your messages</div>{% endblock %}
 
 {% macro item_row(it) %}{% set st = it.state %}
-<div class="erow" style="grid-template-columns:36px minmax(0,1fr) auto">
+{% set open = it.status in ("planned", "active") %}
+<div class="erow" style="grid-template-columns:36px minmax(0,1fr) auto" {% if open %}data-swipe data-id="{{ it.item_id }}" data-kind="{{ it.kind }}" data-title="{{ it.title }}"{% endif %}>
   {% set ev = it.kind == "event" %}
   <span class="avatar" style="background:{{ 'var(--info-soft)' if ev else 'var(--warn-soft)' if it.collection else 'var(--ok-soft)' }};color:{{ 'var(--info)' if ev else 'var(--orange)' if it.collection else 'var(--ok)' }}">{{ icon("calendar" if ev else "gift" if it.collection == "gift_ideas" else "bookmark" if it.collection else "check-square", 17) }}</span>
   <div style="min-width:0">
     <div class="top"><span class="who" style="{{ 'text-decoration:line-through;opacity:.7' if it.status in ('cancelled','undone','rejected','deleted') }}">{% if it.category == "promise" %}{{ icon("handshake", 14) }} {% elif it.category == "waiting" %}{{ icon("hourglass", 14) }} {% endif %}{{ it.title }}</span>
       {% if it.category == "promise" %}<span class="badge b-accent plain">promise</span>{% elif it.category == "waiting" %}<span class="badge b-info plain">waiting on {{ it.person }}</span>{% endif %}</div>
-    <div class="when">
+    <div class="when" style="white-space:normal">
       {% if ev %}{{ st.calendar }} · {% if st.all_day %}{{ st.start|localtime("%a %b %-d") }}{% else %}{{ st.start|localtime }}{% endif %}{% if st.location %} · {{ st.location }}{% endif %}
-      {% else %}{{ st.list }}{% if st.section %} › {{ st.section }}{% endif %}{% for tg in st.tags or [] %} #{{ tg }}{% endfor %}{% if st.due %} · due {{ st.due }}{% if st.due_time %} {{ st.due_time }}{% endif %}{% endif %}{% endif %}
+      {% else %}{{ st.list }}{% if st.section %} › {{ st.section }}{% endif %}{% for tg in st.tags or [] %} #{{ tg }}{% endfor %}{% if st.due %} · due {{ st.due|nicedate }}{% if st.due_time %} {{ st.due_time }}{% endif %}{% endif %}{% endif %}
       {% if not st.section and not st.tags %}· {{ it.person or "?" }}{% endif %}
       {% if st.url %} · <a class="link" href="{{ st.url }}" target="_blank" rel="noopener">{{ icon("link", 12) }} link</a>{% endif %}
     </div>
@@ -26,7 +27,8 @@
   </div>
   <div style="display:grid;gap:6px;justify-items:end">
     <span class="badge b-{{ {'active':'ok','planned':'info','proposed':'warn','completed':'muted','failed':'bad'}.get(it.status, 'muted') }}">{{ {'active':'on Mac','planned':'sending','proposed':'in review','deleted':'deleted in Reminders'}.get(it.status, it.status) }}</span>
-    <a class="btn sm ghost" href="/events/{{ it.origin_event_id|urlencode }}">Open</a>
+    <div style="display:flex;gap:6px;align-items:center"><a class="btn sm ghost" href="/events/{{ it.origin_event_id|urlencode }}">Open</a>
+    {% if open %}<button class="icon-btn more-dots" data-item-menu aria-label="More actions">{{ icon("more", 16) }}</button>{% endif %}</div>
   </div>
 </div>
 {% endmacro %}

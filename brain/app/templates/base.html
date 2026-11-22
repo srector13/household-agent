@@ -19,16 +19,19 @@
 <link rel="stylesheet" href="/static/app.css?v={{ version }}">
 <script>try{var g=localStorage.getItem("glassTint");if(g!==null)document.documentElement.style.setProperty("--glass-tint",g)}catch(e){}</script>
 <script src="/static/app.js?v={{ version }}"></script>
+<script src="/static/focus.js?v={{ version }}" defer></script>
 </head>
 <body data-version="{{ version }}">
 {% set NAV = [
   ("home", "/", "home", "Home", "blue"),
-  ("activity", "/activity", "activity", "Activity", "cyan"),
-  ("items", "/items", "items", "Lists", "green"),
+  ("people", "/people", "users", "People", "green"),
+  ("items", "/items", "items", "Lists", "orange"),
   ("review", "/review", "review", "Review", "red"),
 ] %}
 {% set NAV2 = [
+  ("activity", "/activity", "activity", "Activity", "cyan"),
   ("today", "/today", "sun", "Plan my days", "yellow"),
+  ("weekly", "/weekly", "sparkles", "Weekly reset", "green"),
   ("system", "/system", "server", "Status", "gray"),
   ("settings", "/settings", "settings", "Settings", "gray"),
 ] %}
@@ -36,12 +39,12 @@
   <aside class="sidebar">
     <a class="brand" href="/"><span class="logo"><img src="/static/icons/icon-192.png" alt=""></span><span>{{ cfg.dashboard.app_name }}<small>v{{ version }}</small></span></a>
     <nav class="nav">
-      {% for key, href, ic, label, color in NAV + [NAV2[0]] %}
+      {% for key, href, ic, label, color in NAV + NAV2[:3] %}
       <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic, 20) }} {{ label }}
         {% if key == "review" %}<span class="count" data-review-count {{ "hidden" if not review_count }}>{{ review_count }}</span>{% endif %}</a>
       {% endfor %}
       <div class="nav-label">Tools</div>
-      {% for key, href, ic, label, color in NAV2[1:] %}
+      {% for key, href, ic, label, color in NAV2[3:] %}
       <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic, 20) }} {{ label }}</a>
       {% endfor %}
     </nav>
@@ -57,7 +60,7 @@
         <div class="nav-left">{% block back %}{% endblock %}</div>
         <div class="nav-title">{{ self.heading()|striptags|trim }}</div>
         {% set actions_html %}{% block actions %}{% endblock %}{% endset %}
-        <div class="nav-right">{% if actions_html|trim %}<div class="glass-group">{{ actions_html }}</div>{% endif %}<span class="live" id="live" title="Live updates"><span class="dot"></span></span></div>
+        <div class="nav-right">{% if actions_html|trim %}<div class="glass-group">{{ actions_html }}</div>{% endif %}<button class="capture-btn" type="button" onclick="HA.capture()" aria-label="Capture a thought" title="Capture (N)">{{ icon("plus", 22) }}</button><span class="live" id="live" title="Live updates"><span class="dot"></span></span></div>
       </div>
     </header>
     <main class="content">
@@ -74,7 +77,7 @@
     {% if key == "review" %}<span class="count" data-review-count {{ "hidden" if not review_count }}>{{ review_count }}</span>{% endif %}</a>
   {% endfor %}
   </div>
-  <button id="more-btn" class="tab-more {{ 'on' if nav in ('today','lab','system','settings') }}" type="button" aria-label="More">{{ icon("more", 24) }}<span>More</span></button>
+  <button id="more-btn" class="tab-more {{ 'on' if nav in ('activity','today','lab','system','settings') }}" type="button" aria-label="More">{{ icon("more", 24) }}<span>More</span></button>
 </nav>
 <template id="more-items">
   {% for key, href, ic, label, color in NAV2 %}<a class="left" href="{{ href }}"><span class="tile t-{{ color }}">{{ icon(ic) }}</span>{{ label }}</a>{% endfor %}

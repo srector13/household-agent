@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 class Event(BaseModel):
     event_id: str = Field(min_length=1, max_length=300)
-    source: Literal["imessage", "mail", "manual"] = "imessage"
+    source: Literal["imessage", "mail", "manual", "capture"] = "imessage"
     sender_handle: str = ""
     sender_label: str | None = None
     chat_id: str | None = None
@@ -112,6 +112,7 @@ class Heartbeat(BaseModel):
     uptime_s: float = 0
     buffered_events: int = 0
     reminderkit_ok: bool | None = None  # sections + tags available on the Mac
+    contacts_ok: bool | None = None     # Contacts access for photos
     allowlist_version: int | None = None
     allowlist_size: int | None = None
 

@@ -36,12 +36,25 @@ public actor Agent {
     private var statusSyncRunning = false
     private let statusWakeup = Wakeup()
 
+    // Full-picture calendar snapshot (see Snapshot.swift)
+    private var snapshotDisabled = false
+    private let snapshotRangeDays = CalendarSnapshot.defaultRangeDays
+
+    // Contact photos (see Avatars.swift)
+    private let contacts: ContactsSource
+    private let avatarStateURL: URL
+    private var avatarsDisabled = false
+    private var avatarSyncRunning = false
+
     public init(config: AgentConfig, client: BrainClient, store: ItemStore,
                 organizer: ReminderOrganizer = NoReminderOrganizer(),
                 stateURL: URL = AgentPaths.state, bufferURL: URL = AgentPaths.buffer,
                 syncedConfigURL: URL = AgentPaths.syncedConfig,
+                contacts: ContactsSource = NoContactsSource(), avatarStateURL: URL = AgentPaths.avatarState,
                 backfill: Int? = nil, timeZone: TimeZone = .current) {
         self.config = config
+        self.contacts = contacts
+        self.avatarStateURL = avatarStateURL
         self.client = client
         self.store = store
         self.organizer = organizer
@@ -83,6 +96,7 @@ public actor Agent {
         }
         holdLogged = false
         await sendWakeup.signal()
+        if changed { await syncAvatars() }  // new people → their photos
     }
 
     /// GET /api/agent/config and apply it. Returns true on success. No-op when sync is off.
@@ -360,13 +374,109 @@ public actor Agent {
         } catch {
             statusSchedule.noteSynced()
             Log.warn("completion sync: posting status failed after \(sent) item(s): \(error)")
+            await postSnapshot()
             return .failed(String(describing: error))
         }
         statusSchedule.noteSynced()
+        await postSnapshot()
         let missing = reports.filter { !$0.exists }.count
         let done = reports.filter { $0.completed == true }.count
         Log.debug("completion sync: \(tracked.items.count) tracked, \(sent) reported (\(done) completed, \(missing) missing)")
         return .synced(tracked: tracked.items.count, reported: sent)
+    }
+
+    // MARK: Calendar snapshot
+
+    public enum SnapshotResult: Equatable, Sendable {
+        case disabled
+        /// Nothing readable (no permission / store not loaded): nothing posted, brain keeps its data.
+        case skipped
+        case posted(events: Int?, reminders: Int?)
+        case failed(String)
+    }
+
+    public var snapshotPostingDisabled: Bool { snapshotDisabled }
+
+    /// Posts everything on the user's calendars and reminder lists for the next few days. Runs with
+    /// every completion sync (same cadence, including the debounced run after commands).
+    @discardableResult
+    public func postSnapshot(now: Date = Date()) async -> SnapshotResult {
+        guard !snapshotDisabled else { return .disabled }
+        let parts = await store.calendarSnapshot(rangeDays: snapshotRangeDays, now: now)
+        guard !parts.isEmpty else { return .skipped }
+        let snapshot = CalendarSnapshot(parts: parts, generatedAt: AppleDate.iso8601(now),
+                                        rangeDays: snapshotRangeDays)
+        do {
+            try await client.postSnapshot(snapshot)
+        } catch let e as BrainError where e.status == 404 {
+            Log.warn("brain has no /api/agent/snapshot (older version); calendar snapshot off until restart")
+            snapshotDisabled = true
+            return .disabled
+        } catch {
+            Log.warn("calendar snapshot failed: \(error)")
+            return .failed(String(describing: error))
+        }
+        Log.debug("calendar snapshot: \(snapshot.events?.count.description ?? "–") event(s), \(snapshot.reminders?.count.description ?? "–") reminder(s)")
+        return .posted(events: snapshot.events?.count, reminders: snapshot.reminders?.count)
+    }
+
+    // MARK: Contact photos
+
+    public enum AvatarSyncResult: Equatable, Sendable {
+        case disabled
+        case skipped(String)
+        /// Same names and photos as the last successful post.
+        case unchanged
+        case posted(Int)
+        case failed(String)
+    }
+
+    public var avatarPostingDisabled: Bool { avatarsDisabled }
+
+    /// Sends the watched people's contact names and photos when they changed since the last post.
+    @discardableResult
+    public func syncAvatars(force: Bool = false) async -> AvatarSyncResult {
+        guard !avatarsDisabled else { return .disabled }
+        guard !avatarSyncRunning else { return .skipped("already running") }
+        guard usesSyncedFilter, let list = allowlist else { return .skipped("no synced allowlist") }
+        guard await contacts.isAuthorized() else { return .skipped("no Contacts access") }
+        avatarSyncRunning = true
+        defer { avatarSyncRunning = false }
+        let cards: [ContactCard]
+        do {
+            cards = try await contacts.contacts(matching: list.handles)
+        } catch {
+            Log.warn("reading contacts failed: \(error)")
+            return .failed(String(describing: error))
+        }
+        let people = AvatarMatcher.people(for: list.handles, contacts: cards)
+        let fingerprint = AvatarMatcher.fingerprint(people)
+        if !force, AvatarState.load(from: avatarStateURL)?.fingerprint == fingerprint { return .unchanged }
+        do {
+            try await client.postAvatars(people)
+        } catch let e as BrainError where e.status == 404 {
+            Log.warn("brain has no /api/agent/avatars (older version); contact photos off until restart")
+            avatarsDisabled = true
+            return .disabled
+        } catch {
+            Log.warn("posting contact photos failed: \(error)")
+            return .failed(String(describing: error))
+        }
+        do {
+            try AvatarState(fingerprint: fingerprint, postedAt: AppleDate.iso8601(Date())).save(to: avatarStateURL)
+        } catch {
+            Log.warn("could not save avatar state: \(error)")
+        }
+        let withPhoto = people.filter { $0.image != nil }.count
+        Log.info("contact photos: sent \(people.count) person(s), \(withPhoto) with a photo")
+        return .posted(people.count)
+    }
+
+    private func avatarLoop() async {
+        while !Task.isCancelled {
+            await sleepSeconds(24 * 3600)
+            await syncAvatars()
+        }
     }
 
     private func statusSyncLoop() async {
@@ -396,7 +506,8 @@ public actor Agent {
             bufferedEvents: buffer.count,
             allowlistVersion: allowlistVersion,
             allowlistSize: allowlistSize,
-            reminderkitOk: await organizer.lastKnownAvailability()
+            reminderkitOk: await organizer.lastKnownAvailability(),
+            contactsOk: await contacts.isAuthorized()
         )
     }
 
@@ -492,6 +603,11 @@ public actor Agent {
             if let a = allowlist { Log.info("using cached allowlist v\(a.settingsVersion) until the brain answers") }
             await syncAllowlist()
         }
+        if !(await contacts.isAuthorized()) {
+            let ok = await contacts.requestAccess()
+            Log.info("Contacts access (for the watched people's photos): \(ok ? "granted" : "not granted — photos off")")
+        }
+        await syncAvatars()
         await withTaskGroup(of: Void.self) { group in
             if self.config.syncAllowlist { group.addTask { await self.configSyncLoop() } }
             group.addTask { await self.scanLoop() }
@@ -499,6 +615,7 @@ public actor Agent {
             group.addTask { await self.commandLoop() }
             group.addTask { await self.heartbeatLoop() }
             group.addTask { await self.statusSyncLoop() }
+            group.addTask { await self.avatarLoop() }
         }
     }
 
@@ -517,7 +634,9 @@ public actor Agent {
             Log.error("once: command poll failed: \(error)")
         }
         let statusResult = await syncItemStatus()
-        Log.info("once: completion sync → \(statusResult)")
+        Log.info("once: completion sync (+ calendar snapshot) → \(statusResult)")
+        let avatarResult = await syncAvatars()
+        Log.info("once: contact photos → \(avatarResult)")
         do {
             try await sendHeartbeat()
             Log.info("once: heartbeat sent")
