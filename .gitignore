@@ -10,3 +10,12 @@ __pycache__/
 mac-agent/.build/
 .DS_Store
 .env
+
+# iOS CI outputs
+dd/
+dd-sim/
+*.xcresult
+screenshots/
+screenshots-all/
+output/
+Payload/

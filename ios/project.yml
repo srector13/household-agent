@@ -1,0 +1,91 @@
+# XcodeGen spec — generate the project with:  cd ios && xcodegen generate
+# CI builds it unsigned (.github/workflows/build-ipa.yml) for re-signing with Feather.
+# To run from Xcode instead: open SecondBrain.xcodeproj, set your team, run on the iPhone.
+name: SecondBrain
+options:
+  bundleIdPrefix: PolarReality
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  SecondBrainKit:
+    path: SecondBrainKit
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  SecondBrain:
+    type: application
+    platform: iOS
+    sources:
+      - SecondBrain
+    dependencies:
+      - package: SecondBrainKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: PolarReality.SecondBrain   # Feather can re-sign under another ID
+        PRODUCT_NAME: SecondBrain
+        TARGETED_DEVICE_FAMILY: "1"                         # iPhone
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        DEVELOPMENT_TEAM: ""                                # your Apple Developer team ID, for Xcode runs
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: SecondBrain/Info.plist
+      properties:
+        CFBundleDisplayName: Second Brain
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIStatusBarHidden: false
+        # The brain is on your tailnet, usually plain http://host:8080.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Second Brain connects to your brain server on your home network or tailnet.
+        # Check the brain for new notifications now and then while the app is closed.
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - PolarReality.SecondBrain.refresh
+        CFBundleURLTypes:
+          - CFBundleURLName: PolarReality.SecondBrain
+            CFBundleURLSchemes:
+              - secondbrain
+        ITSAppUsesNonExemptEncryption: false
+
+  # Screenshot tests: drive the app against a real brain (see .github/workflows/ios.yml).
+  SecondBrainUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - SecondBrainUITests
+    dependencies:
+      - target: SecondBrain
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: PolarReality.SecondBrain.UITests
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: SecondBrain
+
+schemes:
+  SecondBrain:
+    build:
+      targets:
+        SecondBrain: all
+        SecondBrainUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - SecondBrainUITests
+    archive:
+      config: Release

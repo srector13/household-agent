@@ -1,0 +1,185 @@
+name: iOS CI
+
+# Every push that touches the app or the brain:
+#   brain  — the brain's test suite, plus the Swift package (models + API client) on Linux, including
+#            its live tests against the devhost (ios/ci/devhost.py: real brain, fake model, fake Mac).
+#   iphone — generates the Xcode project, starts the devhost on the runner, runs the screenshot UI
+#            tests on an iPhone simulator against it, and builds the unsigned Release device app that
+#            build-ipa.yml packages. Screenshots are uploaded as the secondbrain-screenshots-N artifact.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'ios/**'
+      - 'brain/**'
+      - 'scripts/export_screenshots.py'
+      - '.github/workflows/ios.yml'
+
+jobs:
+  brain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the brain
+        run: pip install -e "brain[dev]" || pip install -e brain pytest
+
+      - name: Brain tests
+        working-directory: brain
+        run: python -m pytest -q
+
+      - name: Swift package tests (live against the devhost)
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup python3 ios/ci/devhost.py > devhost.log 2>&1 &
+          for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:8080/api/v1/info && break; sleep 1; done
+          cd ios/SecondBrainKit
+          BRAIN_URL=http://127.0.0.1:8080 swift test
+
+      - name: Upload devhost log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brain-devhost-log-${{ github.run_number }}
+          path: devhost.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  iphone:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Select the newest Xcode
+        shell: bash
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -n 1 || true)
+          if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
+          xcodebuild -version
+          sw_vers
+          xcrun simctl list runtimes | grep -i ios || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Start the devhost
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install -e brain
+          nohup python3 ios/ci/devhost.py > devhost.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -s -o /dev/null http://127.0.0.1:8080/api/v1/info; then echo "devhost is up"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::devhost did not start"; cat devhost.log; exit 1
+
+      - name: Boot iPhone simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          preferred = ["iPhone 17 Pro", "iPhone 17", "iPhone 16 Pro", "iPhone 16", "iPhone Air"]
+          best = None
+          for runtime, devices in json.load(sys.stdin)["devices"].items():
+              m = re.search(r"iOS-(\d+)-(\d+)(?:-(\d+))?$", runtime)
+              if not m:
+                  continue
+              version = tuple(int(p or 0) for p in m.groups())
+              for d in devices:
+                  name = d["name"]
+                  if not name.startswith("iPhone"):
+                      continue
+                  rank = preferred.index(name) if name in preferred else len(preferred)
+                  key = (version, -rank)
+                  if best is None or key > best[0]:
+                      best = (key, d["udid"], name)
+          print(best[1] if best else "")
+          ')
+          [ -n "$UDID" ] || { echo "::error::No iPhone simulator found"; exit 1; }
+          echo "Booting $UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 || true
+          xcrun simctl privacy "$UDID" grant notifications PolarReality.SecondBrain || true
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: Screenshot tests
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project ios/SecondBrain.xcodeproj -scheme SecondBrain \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -derivedDataPath ./dd-sim -resultBundlePath ui.xcresult \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee ui-tests.log
+
+      - name: Export screenshots
+        if: always()
+        shell: bash
+        run: |
+          [ -d ui.xcresult ] || exit 0
+          python3 scripts/export_screenshots.py ui.xcresult screenshots-all || true
+          mkdir -p screenshots
+          find screenshots-all -name '[0-9][0-9]-*.png' -exec mv {} screenshots/ \;
+          ls -la screenshots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secondbrain-screenshots-${{ github.run_number }}
+          path: screenshots/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Release device build (unsigned)
+        if: always()
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project ios/SecondBrain.xcodeproj -scheme SecondBrain -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath ./dd \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            2>&1 | tee device-build.log
+
+      - name: Compile errors (summary)
+        if: failure()
+        shell: bash
+        run: |
+          grep -h -E "error:|warning: unre" ui-tests.log device-build.log 2>/dev/null | sort -u | head -80 || true
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-logs-${{ github.run_number }}
+          path: |
+            ui-tests.log
+            device-build.log
+            devhost.log
+            screenshots-all/*.txt
+          if-no-files-found: ignore
+          retention-days: 7
