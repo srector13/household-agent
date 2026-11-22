@@ -316,6 +316,31 @@ class Daily:
         elif hm >= self.cfg.daily.evening_time and plan.get("picks") and not plan.get("evening_at"):
             await self.evening(now)
 
+    # ---- tick off from the app ------------------------------------------------------------------------------
+    async def set_done(self, item_id: str, done: bool) -> dict[str, Any]:
+        it = self.items.get(item_id)
+        if not it or it["kind"] != "reminder":
+            raise ValueError("unknown item")
+        if done and it["status"] not in ("planned", "active"):
+            return {"status": it["status"]}
+        if not done and it["status"] != "completed":
+            return {"status": it["status"]}
+        purpose = "complete" if done else "update"
+        self.db.insert_command(f"app:{self.today().isoformat()}", "update_item",
+                               {"apple_item_id": it.get("apple_item_id"), "tag": it["tag"], "kind": "reminder",
+                                "changes": {"completed": done}, "notes_append": None},
+                               "pending", item_id=item_id, purpose=purpose,
+                               meta={"previous": {"completed": not done}, "why": "ticked in the app", "title": it["title"]})
+        # Show it right away; the Mac's result confirms it (completion sync would correct a failure).
+        fields: dict[str, Any] = {"status": "completed" if done else "active"}
+        if done:
+            fields["completed_at"] = datetime.now(timezone.utc).isoformat()
+        self.items.update(item_id, **fields)
+        self.items.log(item_id, None, "completed" if done else "reopened", {"via": "app"})
+        await self.queue.wake()
+        self.bus.publish({"type": "items"})
+        return {"status": fields["status"]}
+
     # ---- breakdown on demand ---------------------------------------------------------------------------------
     async def breakdown(self, item_id: str) -> dict[str, Any]:
         it = self.items.get(item_id)

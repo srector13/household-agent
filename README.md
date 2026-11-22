@@ -108,13 +108,13 @@ agent can keep using whichever address it already has.
 
 | Page | What it's for |
 |---|---|
-| **Overview** | Today's numbers, the live pipeline (Mac agent → gate → LLM → planner → queue → Reminders, each with status and 24h counts, lighting up as messages flow), recent activity, what's coming up, 14-day chart |
-| **Activity** | Every message with search and status filters; each one opens a step-by-step trace (prompt, raw model output, commands, Mac results) with Undo / Retry / Edit |
-| **Review** | Low-confidence items with one-tap Approve / Reject |
-| **Created items** | Everything the agent put in Reminders and Calendar that hasn't been undone |
-| **Test lab** | Dry-run a message against the live model |
-| **System** | Every component's health, funnel, command queue, alerts, settings change log, the prompt; test-alert and back-up-now buttons |
-| **Settings** | People & chats to watch (add, rename, pause, remove), reminders list, alert times, review threshold, model endpoint (with connection test), Discord, mail |
+| **Home** | At a glance: the next appointment with a countdown, today's three (tick them off right here — it syncs to Reminders), what needs you (review, follow-ups that are due, late promises), what's coming up, and what the brain just did. A warning only appears when something is actually wrong |
+| **Activity** | Every message with search and filters; each opens a step-by-step trace with Undo / Retry / Edit |
+| **Lists** | To-dos & events, collections (by person), and finished/cancelled items, each with its history |
+| **Review** | Low-confidence items: Add or Skip |
+| **Plan my days** (More) | Today's picks in detail, done today, and choosing tomorrow's three |
+| **Status** (More) | The pipeline diagram, stats, 14-day chart, every component's health, queue, alerts, settings log, the prompt; Test lab lives at the bottom |
+| **Settings** (More) | People & chats, reminders, collections, daily rhythm, model, alerts, mail |
 
 It's built for the iPhone first (see **iPhone app** above) and works in light and dark mode.
 Writes from other sites are blocked (same-origin check). Set `dashboard.password` if more people

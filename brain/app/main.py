@@ -342,6 +342,13 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
             return {"ok": True}
         raise HTTPException(404)
 
+    @app.post("/api/items/{item_id}/done", dependencies=[Depends(dash_auth)])
+    async def item_done(item_id: str, body: dict = Body(default={})):
+        try:
+            return {"ok": True, **(await daily.set_done(item_id, bool(body.get("done", True))))}
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
+
     @app.post("/api/items/{item_id}/breakdown", dependencies=[Depends(dash_auth)])
     async def item_breakdown(item_id: str):
         try:
@@ -357,14 +364,10 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
             "llm_ok": health.llm_fail_streak == 0 and health.llm_last_ok is not None, **ctx})
 
     @app.get("/", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
-    async def overview_page(request: Request):
-        ov = views.overview(db, cfg, health.snapshot(queue.depth()))
-        tplan = daily.plan(daily.today())
-        today_picks = [{**p, "status": (pipeline.items.get(p["item_id"]) or {}).get("status", "gone")}
-                       for p in tplan.get("picks", [])]
-        return page(request, "overview.html", "overview", ov=ov, today_picks=today_picks, recent=views.search_events(
-            db, q=None, status=None, source=None, limit=8), upcoming=views.upcoming(db, cfg),
-            prompt_version=pipeline.prompt.version)
+    async def home_page(request: Request):
+        from .home import home
+        return page(request, "home.html", "home",
+                    h=home(db, cfg, daily, pipeline.items, health.snapshot(queue.depth())))
 
     @app.get("/today", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
     async def today_page(request: Request):
@@ -474,7 +477,8 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
 
     @app.get("/system", response_class=HTMLResponse, dependencies=[Depends(dash_auth)])
     async def system_page(request: Request):
-        return page(request, "system.html", "system", h=health.snapshot(queue.depth()),
+        snap = health.snapshot(queue.depth())
+        return page(request, "system.html", "system", h=snap, ov=views.overview(db, cfg, snap),
                     alerts=db.all("SELECT * FROM alerts ORDER BY id DESC LIMIT 40"),
                     commands=views.open_commands(db), last_backup=db.kv_get("last_backup"),
                     prompt=pipeline.prompt, dbinfo=views.db_info(db), history=settings.history(25),
@@ -515,7 +519,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
                     form={"text": text, "who": who, "context": context, "now": now, "from_me": from_me})
 
     # old URLs
-    for old, new in {"/health": "/system", "/stats": "/", "/playground": "/lab"}.items():
+    for old, new in {"/health": "/system", "/stats": "/system", "/playground": "/lab", "/status": "/system"}.items():
         app.add_api_route(old, (lambda n: (lambda: RedirectResponse(n, status_code=301)))(new),
                           methods=["GET"], include_in_schema=False)
 

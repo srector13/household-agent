@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Created items · {{ cfg.dashboard.app_name }}{% endblock %}
-{% block heading %}Created items{% endblock %}
-{% block subheading %}<div class="sub">Everything the agent put in Reminders and Calendar — and how later messages changed it</div>{% endblock %}
+{% block title %}Lists · {{ cfg.dashboard.app_name }}{% endblock %}
+{% block heading %}Lists{% endblock %}
+{% block subheading %}<div class="sub">Everything in Reminders and Calendar from your messages</div>{% endblock %}
 
 {% macro item_row(it) %}{% set st = it.state %}
 <div class="erow" style="grid-template-columns:36px minmax(0,1fr) auto">

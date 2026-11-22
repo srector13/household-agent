@@ -21,15 +21,14 @@
 </head>
 <body data-version="{{ version }}">
 {% set NAV = [
-  ("overview", "/", "dashboard", "Overview", "blue"),
-  ("today", "/today", "sun", "Today", "orange"),
+  ("home", "/", "home", "Home", "blue"),
   ("activity", "/activity", "activity", "Activity", "cyan"),
+  ("items", "/items", "items", "Lists", "green"),
   ("review", "/review", "review", "Review", "red"),
 ] %}
 {% set NAV2 = [
-  ("items", "/items", "check-square", "Created items", "green"),
-  ("lab", "/lab", "lab", "Test lab", "mint"),
-  ("system", "/system", "server", "System", "gray"),
+  ("today", "/today", "sun", "Plan my days", "yellow"),
+  ("system", "/system", "server", "Status", "gray"),
   ("settings", "/settings", "settings", "Settings", "gray"),
 ] %}
 <div class="shell">
@@ -71,7 +70,7 @@
   <a href="{{ href }}" class="{{ 'on' if nav == key }}">{{ icon(ic, 25) }}{{ label }}
     {% if key == "review" %}<span class="count" data-review-count {{ "hidden" if not review_count }}>{{ review_count }}</span>{% endif %}</a>
   {% endfor %}
-  <button id="more-btn" class="{{ 'on' if nav in ('items','lab','system','settings') }}" type="button">{{ icon("more", 25) }}More</button>
+  <button id="more-btn" class="{{ 'on' if nav in ('today','lab','system','settings') }}" type="button">{{ icon("more", 25) }}More</button>
 </nav>
 <template id="more-items">
   {% for key, href, ic, label, color in NAV2 %}<a class="left" href="{{ href }}"><span class="tile t-{{ color }}">{{ icon(ic) }}</span>{{ label }}</a>{% endfor %}

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Today · {{ cfg.dashboard.app_name }}{% endblock %}
-{% block heading %}Today{% endblock %}
+{% block heading %}Plan{% endblock %}
 {% block subheading %}<div class="sub">{{ day.strftime("%A, %B %-d") }} · just these — everything else can wait</div>{% endblock %}
 {% block actions %}
 <button class="btn sm" onclick="todayAction(this, 'repick', 'New picks — moved into Reminders\' Today view')" title="Choose again">{{ icon("refresh", 15) }}<span>Re-pick</span></button>

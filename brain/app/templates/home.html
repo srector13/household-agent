@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% from "_macros.html" import initials %}
+{% block title %}{{ cfg.dashboard.app_name }}{% endblock %}
+{% block heading %}{{ h.greeting }}{% endblock %}
+{% block subheading %}<div class="sub">{{ h.now.strftime("%A, %B %-d") }}{% if h.done_today %} · {{ h.done_today }} done today{% endif %}</div>{% endblock %}
+{% block content %}
+{% set att = h.attention %}
+<div class="home">
+
+  {% for msg in h.problems %}
+  <a class="notice warn" href="/system">{{ icon("alert") }}<span class="body">{{ msg }}</span>{{ icon("chevron-right", 16) }}</a>
+  {% endfor %}
+
+  {% if h.next %}{% set n = h.next %}
+  <a class="nextup {{ 'ev' if n.kind == 'event' else 'rem' }}" href="/events/{{ n.event_id|urlencode }}">
+    <div class="when"><b>{{ n.at.strftime("%-I:%M") }}</b><span>{{ n.at.strftime("%p") }}</span></div>
+    <div style="min-width:0">
+      <div class="label">{{ "Happening now" if n.ongoing else "Up next" }} · {{ n["in"] }}</div>
+      <div class="t">{{ n.title }}</div>
+      <div class="m">{% if n.kind == "event" %}until {{ n.end.strftime("%-I:%M %p") }}{% if n.where %} · {{ n.where }}{% endif %}{% else %}{{ n.where }}{% endif %}</div>
+    </div>
+  </a>
+  {% endif %}
+
+  <div>
+    <div class="group-h"><span>Today</span>
+      {% if h.picks %}<span class="right">{{ h.picks_left }} of {{ h.picks|length }} left</span>{% endif %}
+      <a class="right link" href="/today">Plan</a></div>
+    <div class="card list">
+      {% for p in h.picks %}{% set done = p.status == "completed" %}{% set gone = p.status not in ("planned", "active", "completed") %}
+      <div class="pick {{ 'done' if done }} {{ 'gone' if gone }}" data-item="{{ p.item_id }}">
+        {% if p.kind == "reminder" and not gone %}
+        <button class="check {{ 'on' if done }}" aria-label="Done" data-id="{{ p.item_id }}" onclick="toggleDone(this)">{{ icon("check", 15) }}</button>
+        {% else %}<span class="check ghosty">{{ icon("calendar" if p.kind == "event" else "x", 14) }}</span>{% endif %}
+        <div style="min-width:0">
+          <div class="t">{% if p.category == "promise" %}{{ icon("handshake", 15) }} {% elif p.category == "waiting" %}{{ icon("hourglass", 15) }} {% endif %}{{ p.title }}</div>
+          {% if p.why and not done %}<div class="why">{{ p.why }}</div>{% endif %}
+          {% if p.first_step and not done and not gone %}<div class="start">{{ icon("footprints", 14) }}<b>Start:</b> {{ p.first_step }}</div>{% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="empty" style="padding:22px 16px">
+        {% if h.before_morning %}Your three arrive at {{ cfg.daily.morning_time }}.{% else %}Nothing picked for today yet.{% endif %}
+        <div style="margin-top:10px"><button class="btn primary" onclick="planNow(this)">{{ icon("sun", 15) }}Plan my day</button></div>
+      </div>
+      {% endfor %}
+      {% if h.picks and h.picks_left == 0 %}
+      <div class="cheer">🎉 All three done. Anything else today is a bonus.</div>
+      {% endif %}
+      {% if h.evening %}
+      <a class="rowlink" href="/today">{{ icon("moon", 18) }}<span>Wrap up & pick tomorrow's three</span>{{ icon("chevron-right", 16) }}</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if att.count %}
+  <div>
+    <div class="group-h"><span>Needs you</span><span class="right">{{ att.count }}</span></div>
+    <div class="card list">
+      {% for r in att.reviews %}{% set e = r.e %}
+      <div class="needrow" data-event="{{ e.event_id }}">
+        <span class="avatar sm {{ 'me' if e.is_from_me }}">{{ initials(e.sender_label) }}</span>
+        <a href="/events/{{ e.event_id|urlencode }}" style="min-width:0">
+          <div class="t">{{ r.titles|join(", ") or "Check this message" }}</div>
+          <div class="m">{{ e.sender_label }}: “{{ e.text[:80] }}{{ "…" if e.text|length > 80 }}”</div>
+        </a>
+        <div class="acts">
+          {% if r.titles %}<button class="btn sm ok" data-id="{{ e.event_id }}" onclick="decide(this,'approve')">Add</button>{% endif %}
+          <button class="btn sm" data-id="{{ e.event_id }}" onclick="decide(this,'reject')">Skip</button>
+        </div>
+      </div>
+      {% endfor %}
+      {% for it in att.followups %}
+      <div class="needrow">
+        <button class="check" data-id="{{ it.item_id }}" onclick="toggleDone(this)" aria-label="Got it">{{ icon("check", 15) }}</button>
+        <a href="/events/{{ it.origin_event_id|urlencode }}" style="min-width:0">
+          <div class="t">{{ icon("hourglass", 14) }} Follow up with {{ it.person }}</div>
+          <div class="m">{{ it.title }}{% if it.state.due %} · expected {{ it.state.due|nicedate }}{% endif %}</div>
+        </a>
+      </div>
+      {% endfor %}
+      {% for it in att.late %}
+      <div class="needrow">
+        <button class="check" data-id="{{ it.item_id }}" onclick="toggleDone(this)" aria-label="Done">{{ icon("check", 15) }}</button>
+        <a href="/events/{{ it.origin_event_id|urlencode }}" style="min-width:0">
+          <div class="t">{{ icon("handshake", 14) }} {{ it.title }}</div>
+          <div class="m">You promised {{ it.person }} · was due {{ it.state.due|nicedate }}</div>
+        </a>
+      </div>
+      {% endfor %}
+      {% if att.failed %}
+      <a class="needrow" href="/activity?status=failed">
+        <span class="check ghosty" style="color:var(--red)">{{ icon("alert", 14) }}</span>
+        <div><div class="t">{{ att.failed }} message{{ "s" if att.failed != 1 }} couldn't be processed</div><div class="m">Tap to look — Retry usually fixes it</div></div>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if h.agenda %}
+  <div>
+    <div class="group-h"><span>Coming up</span><a class="right link" href="/items">Lists</a></div>
+    <div class="card list">
+      {% for u in h.agenda %}
+      <a class="up" href="/events/{{ u.event_id|urlencode }}">
+        <div class="day"><span>{{ "Today" if u.when.date() == h.now.date() else u.when.strftime("%a") }}</span><b>{{ u.when.day }}</b></div>
+        <div style="min-width:0"><div class="t">{{ u.title }}</div>
+          <div class="m">{% if not u.all_day %}{{ u.when.strftime("%-I:%M %p") }} · {% endif %}{{ u.where }}{% if u.who and u.who != "Me" %} · {{ u.who }}{% endif %}</div></div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if h.recent %}
+  <div>
+    <div class="group-h"><span>Just now</span><a class="right link" href="/activity">All activity</a></div>
+    <div class="card list">
+      {% for r in h.recent %}
+      <a class="feedrow" href="/events/{{ r.event_id|urlencode }}">
+        <span class="tile {{ {'Done':'t-green','Cancelled':'t-red','Deleted':'t-red','Undid':'t-gray','Changed':'t-brown'}.get(r.verb, 't-orange' if r.collection else 't-red' if r.kind == 'event' else 't-blue') }}">{{ icon({'Done':'check','Cancelled':'x','Deleted':'trash','Undid':'undo','Changed':'pencil'}.get(r.verb, 'gift' if r.collection == 'gift_ideas' else 'bookmark' if r.collection else 'calendar' if r.kind == 'event' else 'check-square')) }}</span>
+        <div style="min-width:0"><div class="t"><span class="faint">{{ r.verb }}</span> {{ r.title }}</div>
+          <div class="m">{% if r.person and r.person != "Me" %}{{ r.person }} · {% endif %}{% if r.via %}in {{ r.via }} · {% endif %}<span data-ago="{{ r.at }}"></span></div></div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <a class="allgood" href="/system">{% if h.problems %}<span class="dot bad"></span> Something needs attention{% else %}<span class="dot ok"></span> Everything's running{% endif %} · Status {{ icon("chevron-right", 13) }}</a>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function toggleDone(btn) {
+  const on = !btn.classList.contains("on");
+  btn.classList.toggle("on", on);
+  const row = btn.closest(".pick, .needrow"); row && row.classList.toggle("done", on);
+  try {
+    await HA.api("POST", `/api/items/${encodeURIComponent(btn.dataset.id)}/done`, { done: on });
+    if (on) {
+      const left = document.querySelectorAll(".pick .check:not(.on):not(.ghosty)").length;
+      HA.toast(left ? `Nice — ${left} left today` : "That's all three 🎉");
+    }
+  } catch (e) { btn.classList.toggle("on", !on); row && row.classList.toggle("done", !on); HA.toast(e.message, "bad"); }
+}
+function decide(btn, action) {
+  HA.action(btn, action, btn.dataset.id, { done: action === "approve" ? "Added" : "Skipped", onDone: () => {
+    const r = btn.closest(".needrow"); r.classList.add("gone"); setTimeout(() => r.remove(), 350); HA.refreshShell(); } });
+}
+async function planNow(btn) {
+  HA.busy(btn, true);
+  try { await HA.api("POST", "/api/today/repick"); location.reload(); } catch (e) { HA.toast(e.message, "bad"); HA.busy(btn, false); }
+}
+let reloadTimer;
+HA.on((d) => {
+  if (!(d.type === "daily" || d.type === "items" || d.status)) return;
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(() => { if (!document.querySelector(".asheet") && !document.hidden) location.reload(); }, 1500);
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden) location.reload(); });
+</script>
+{% endblock %}

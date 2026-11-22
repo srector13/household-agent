@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% set a = h.agent %}
-{% block title %}System · {{ cfg.dashboard.app_name }}{% endblock %}
-{% block heading %}System{% endblock %}
-{% block subheading %}<div class="sub">The plumbing: every component, queue and alert</div>{% endblock %}
+{% block title %}Status · {{ cfg.dashboard.app_name }}{% endblock %}
+{% block heading %}Status{% endblock %}
+{% block subheading %}<div class="sub">How the pipeline is doing — every component, queue and alert</div>{% endblock %}
 {% block actions %}
 <button class="btn sm" onclick="sysAction(this,'/api/system/test-alert','Test alert sent to Discord')">{{ icon("bell", 15) }}<span>Test alert</span></button>
 <button class="btn sm" onclick="sysAction(this,'/api/system/backup','Backup written')">{{ icon("database", 15) }}<span>Back up now</span></button>
@@ -10,6 +10,67 @@
 {% block content %}
 {% macro yes(v) %}{% if v %}<span class="badge b-ok">OK</span>{% else %}<span class="badge b-bad">missing</span>{% endif %}{% endmacro %}
 <div class="stack">
+  {% set f = ov.funnel %}{% set a = h.agent %}
+  <div class="grid g4">
+    <div class="card kpi"><div class="label"><span class="ic">{{ icon("message", 16) }}</span>Messages today</div><div class="value num">{{ ov.today.messages }}</div><div class="hint">{{ f.received }} in the last 24h</div></div>
+    <div class="card kpi ok"><div class="label"><span class="ic">{{ icon("check-square", 16) }}</span>Items created</div><div class="value num">{{ ov.today.created }}</div><div class="hint">today</div></div>
+    <a class="card kpi warn" href="/review"><div class="label"><span class="ic">{{ icon("review", 16) }}</span>Needs review</div><div class="value num">{{ ov.review }}</div><div class="hint">{{ ov.failed_24h }} failed in 24h</div></a>
+    <div class="card kpi info"><div class="label"><span class="ic">{{ icon("zap", 16) }}</span>Model speed</div><div class="value num">{{ ov.latency.p50 or "—" }}<small>ms</small></div><div class="hint">median · p90 {{ ov.latency.p90 or "—" }} ms</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><h2>Pipeline</h2><span class="faint" style="font-size:13px">last 24 hours · live</span></div>
+    <div class="card-b">
+      <div class="flow">
+        <div class="node {{ '' if a.online else 'bad' }}" data-node="mac">
+          <div class="nh"><span class="ic">{{ icon("laptop", 15) }}</span>Mac agent<span class="dot {{ 'ok' if a.online else 'bad' }}" data-agent-dot></span></div>
+          <div class="metric num">{{ a.last_seen_s_ago if a.last_seen_s_ago is not none else "—" }}<small>s ago</small></div>
+          <div class="cap">{% if a.agent_version %}v{{ a.agent_version }} · reads chat.db{% else %}waiting for first heartbeat{% endif %}</div>
+        </div>
+        <div class="node" data-node="gate">
+          <div class="nh"><span class="ic">{{ icon("filter", 15) }}</span>Gate</div>
+          <div class="metric num">{{ f.gated }}<small> filtered</small></div>
+          <div class="cap">of {{ f.received }} received · tapbacks, emoji, "ok"</div>
+        </div>
+        <div class="node {{ '' if h.llm.reachable else 'bad' }}" data-node="llm">
+          <div class="nh"><span class="ic">{{ icon("sparkles", 15) }}</span>Model<span class="dot {{ 'ok' if h.llm.reachable else 'bad' }}" data-llm-dot></span></div>
+          <div class="metric num">{{ f.to_llm }}<small> read</small></div>
+          <div class="cap mono">{{ cfg.llm.model.split('/')[-1] }} · {{ h.llm.latency_ms or "—" }} ms ping</div>
+        </div>
+        <div class="node" data-node="planner">
+          <div class="nh"><span class="ic">{{ icon("workflow", 15) }}</span>Planner</div>
+          <div class="metric num">{{ f.actionable }}<small> actionable</small></div>
+          <div class="cap">{{ f.review }} held for review</div>
+        </div>
+        <div class="node" data-node="queue">
+          <div class="nh"><span class="ic">{{ icon("layers", 15) }}</span>Queue</div>
+          <div class="metric num">{{ h.queue_depth }}<small> waiting</small></div>
+          <div class="cap">long-polled by the Mac</div>
+        </div>
+        <div class="node {{ 'bad' if a.agent_version and not (a.reminders_ok and a.calendar_ok) }}" data-node="apple">
+          <div class="nh"><span class="ic">{{ icon("calcheck", 15) }}</span>Reminders</div>
+          <div class="metric num">{{ f.created }}<small> created</small></div>
+          <div class="cap">→ {{ cfg.rules.reminder_list }} · {{ cfg.rules.calendars.default }} · iCloud</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><h2>Last 14 days</h2><div class="right legend"><span><i style="background:var(--fill-2)"></i>messages</span><span><i style="background:var(--tint)"></i>items</span></div></div>
+    <div class="card-b">
+      {% set mx = [ov.daily|map(attribute="messages")|max, 1]|max %}
+      <div class="chart">
+        {% for d in ov.daily %}
+        <div class="col" title="{{ d.date }}: {{ d.messages }} messages, {{ d.created }} items">
+          <div class="bar" style="height:{{ (100 * d.messages / mx)|round(1) }}%"><div class="in" style="height:{{ (100 * ([d.created, d.messages]|min) / ([d.messages, 1]|max))|round(1) }}%"></div></div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="chart-x">{% for d in ov.daily %}<span>{{ d.date[8:]|int }}</span>{% endfor %}</div>
+    </div>
+  </div>
+
   <div class="grid g2">
     <div class="card">
       <div class="card-h"><span class="dot {{ 'ok' if a.online else 'bad' }}"></span><h2>Mac agent</h2><div class="right faint" style="font-size:12.5px">{% if a.agent_version %}v{{ a.agent_version }}{% endif %}</div></div>
@@ -118,10 +179,23 @@
       </div>
     </div>
   </div>
+  <a class="allgood" href="/lab">{{ icon("lab", 13) }} Developer tools · Test lab {{ icon("chevron-right", 13) }}</a>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
+document.addEventListener("DOMContentLoaded", () => {
+  const hit = (n) => { const el = document.querySelector(`[data-node="${n}"]`); if (!el) return;
+    el.classList.remove("hit"); void el.offsetWidth; el.classList.add("hit"); setTimeout(() => el.classList.remove("hit"), 1400); };
+  HA.on((d) => {
+    if (d.type === "heartbeat") return hit("mac");
+    if (d.status === "received") { hit("gate"); setTimeout(() => hit("llm"), 300); }
+    else if (d.status === "skipped") hit("gate");
+    else if (d.status === "needs_review") hit("planner");
+    else if (d.status === "queued") { hit("planner"); setTimeout(() => hit("queue"), 250); }
+    else if (d.status === "done" || d.status === "undone") hit("apple");
+  });
+});
 async function sysAction(btn, url, ok) {
   HA.busy(btn, true);
   try { const d = await HA.api("POST", url); HA.toast(d.path ? `${ok}: ${d.path}` : ok); }
