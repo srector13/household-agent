@@ -1,6 +1,6 @@
 # mac-agent
 
-The only Mac-specific piece of Household Agent. A small signed Swift command-line tool, run by
+The only Mac-specific piece of Second Brain (formerly Household Agent). A small signed Swift command-line tool, run by
 launchd, that:
 
 - watches `~/Library/Messages/chat.db` (read-only) and POSTs new messages to the brain,
@@ -201,7 +201,7 @@ Check it on your Mac:
 ```sh
 BIN="$HOME/Library/Application Support/HouseholdAgent/bin/mac-agent"
 "$BIN" --probe-reminderkit                 # which classes/selectors exist (read-only)
-"$BIN" --probe-reminderkit --write         # create a test reminder in "Household Agent probe" with
+"$BIN" --probe-reminderkit --write         # create a test reminder in "Second Brain probe" with
                                            # section "Probe" + #haprobe, read it back, delete it
 "$BIN" --probe-reminderkit --write --keep  # same, but keep it so you can look at View → as Columns
 ```

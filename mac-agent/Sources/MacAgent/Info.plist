@@ -7,18 +7,18 @@
     <key>CFBundleName</key>
     <string>HouseholdAgent</string>
     <key>CFBundleDisplayName</key>
-    <string>Household Agent</string>
+    <string>Second Brain</string>
     <key>CFBundleShortVersionString</key>
     <string>0.3.0</string>
     <key>CFBundleVersion</key>
     <string>3</string>
     <key>NSRemindersFullAccessUsageDescription</key>
-    <string>Household Agent creates reminders from household messages.</string>
+    <string>Second Brain turns your messages into reminders.</string>
     <key>NSRemindersUsageDescription</key>
-    <string>Household Agent creates reminders from household messages.</string>
+    <string>Second Brain turns your messages into reminders.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>Household Agent creates calendar events from household messages.</string>
+    <string>Second Brain turns your messages into calendar events.</string>
     <key>NSCalendarsUsageDescription</key>
-    <string>Household Agent creates calendar events from household messages.</string>
+    <string>Second Brain turns your messages into calendar events.</string>
 </dict>
 </plist>

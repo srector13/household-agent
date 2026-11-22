@@ -1,4 +1,4 @@
-# Household Agent — common tasks. Brain targets run from brain/, agent targets from mac-agent/.
+# Second Brain — common tasks. Brain targets run from brain/, agent targets from mac-agent/.
 PY ?= python3
 VENV ?= brain/.venv
 VPY := $(VENV)/bin/python

@@ -5,13 +5,13 @@ def test_manifest_uses_app_name(client):
     m = client.get("/manifest.webmanifest")
     assert m.status_code == 200 and m.headers["content-type"].startswith("application/manifest+json")
     j = m.json()
-    assert j["display"] == "standalone" and j["start_url"].startswith("/") and j["name"] == "Household Agent"
+    assert j["display"] == "standalone" and j["start_url"].startswith("/") and j["name"] == "Second Brain"
     assert {i["sizes"] for i in j["icons"]} == {"192x192", "512x512"}
     assert any(i.get("purpose") == "maskable" for i in j["icons"])
-    client.patch("/api/settings", json={"dashboard": {"app_name": "Second Brain"}})
+    client.patch("/api/settings", json={"dashboard": {"app_name": "Brain"}})
     j = client.get("/manifest.webmanifest").json()
-    assert j["name"] == "Second Brain" and j["short_name"] == "Second Brain"
-    assert '<meta name="apple-mobile-web-app-title" content="Second Brain">' in client.get("/").text
+    assert j["name"] == "Brain" and j["short_name"] == "Brain"
+    assert '<meta name="apple-mobile-web-app-title" content="Brain">' in client.get("/").text
 
 
 def test_service_worker(client):
@@ -24,7 +24,7 @@ def test_service_worker(client):
 
 
 def test_offline_page_and_icons(client):
-    assert "Can't reach the brain" in client.get("/offline").text
+    assert "Can't reach your Second Brain" in client.get("/offline").text
     for path in ["/static/icons/apple-touch-icon.png", "/static/icons/icon-192.png", "/static/icons/icon-512.png",
                  "/static/icons/icon-maskable-512.png", "/static/icons/favicon-32.png", "/static/icons/icon.svg"]:
         assert client.get(path).status_code == 200, path
@@ -47,3 +47,15 @@ def test_back_button_and_nav_title(client, llm):
     client.post("/api/events?sync=true", json=msg(text="hello there friend"), headers=AUTH)
     t = client.get("/events/imessage:1").text
     assert 'class="nav-back" href="/activity"' in t and '<div class="nav-title">Wife</div>' in t
+
+
+def test_no_purple_anywhere(client):
+    """The palette has no purple/indigo (by request)."""
+    import re
+    css = client.get("/static/app.css").text.lower()
+    for bad in ("purple", "indigo", "#5856d6", "#af52de", "#bf5af2", "#5e5ce6", "#7d7aff", "88,86,214"):
+        assert bad not in css, bad
+    svg = client.get("/static/icons/icon.svg").text.lower()
+    for hexcol in re.findall(r"#[0-9a-f]{6}", svg):
+        r, g, b = (int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
+        assert not (b > g and r > g * 0.8 and r > 90), f"purple-ish {hexcol} in icon"

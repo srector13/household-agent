@@ -1,6 +1,10 @@
-# Household Agent
+# Second Brain
 
-A private, always-on pipeline that watches household messages (iMessage, then Mail), uses the
+*(formerly Household Agent; the repository and internal names, like the Mac agent's
+`com.household.mac-agent` identifier and `HouseholdAgent` folders, keep the old name so
+existing installs and their macOS permissions carry over.)*
+
+A private, always-on second brain that watches your messages (iMessage, then Mail), uses the
 local LLM on the Spark to pull out to-dos and events, and writes them into Apple Reminders and
 Calendar. A web dashboard shows everything it did and why.
 
@@ -93,7 +97,7 @@ tailscale serve --bg 8080        # → https://<host>.<tailnet>.ts.net
 ```
 
 1. Set **Settings → Alerts & dashboard → Dashboard URL** to that `https://` address, so alert
-   links open the app. Optionally rename the app there too (e.g. "Second Brain").
+   links open the app. You can also rename the app there.
 2. On the iPhone, open the `https://` address in Safari → Share → **Add to Home Screen**.
 
 Offline, the app shows the last version of each page you opened; actions need the connection.

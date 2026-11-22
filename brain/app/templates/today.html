@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Today · Household Agent{% endblock %}
+{% block title %}Today · {{ cfg.dashboard.app_name }}{% endblock %}
 {% block heading %}Today{% endblock %}
 {% block subheading %}<div class="sub">{{ day.strftime("%A, %B %-d") }} · just these — everything else can wait</div>{% endblock %}
 {% block actions %}

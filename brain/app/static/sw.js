@@ -1,4 +1,4 @@
-/* Household Agent service worker — v__VERSION__
+/* Second Brain service worker — v__VERSION__
  * Static assets: cache-first. Pages: network-first, falling back to the last copy (or /offline).
  * /api/* (JSON, the live SSE stream) and every non-GET request always go to the network. */
 const VERSION = "__VERSION__";

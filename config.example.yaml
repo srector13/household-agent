@@ -81,6 +81,7 @@ alerts:
 dashboard:
   public_url: http://brain:8080           # used in Discord links (Tailscale name)
   password: null                          # optional HTTP basic auth (user "admin")
+  app_name: Second Brain                  # home-screen name of the iPhone app
 
 security:
   agent_token: change-me                  # mac-agent reads its copy from Keychain

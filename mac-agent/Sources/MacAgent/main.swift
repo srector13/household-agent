@@ -16,7 +16,7 @@ struct Options {
     var showVersion = false
     var showHelp = false
     var probeReminderKit = false
-    var probeList = "Household Agent probe"
+    var probeList = "Second Brain probe"
     var probeWrite = false
     var probeKeep = false
 }
@@ -67,7 +67,7 @@ usage: mac-agent [--config PATH] [--backfill N] [--once] [--request-permissions]
   --probe-reminderkit    check whether list sections + #tags (private ReminderKit) work on this Mac
       --write            also create a test reminder with section "Probe" and tag #haprobe, read it
                          back and delete it again
-      --list NAME        list for the write test (default "Household Agent probe"; created and
+      --list NAME        list for the write test (default "Second Brain probe"; created and
                          removed again if it doesn't exist)
       --keep             keep the test reminder (and list) so you can look at it in column view
 """
@@ -207,7 +207,7 @@ func probeReminderKit(_ opts: Options) async -> Int32 {
     let id: String
     do {
         id = try await ek.createReminder(ReminderPayload(
-            title: "Household Agent probe — safe to delete", list: opts.probeList, createListIfMissing: true,
+            title: "Second Brain probe — safe to delete", list: opts.probeList, createListIfMissing: true,
             notes: "Created by mac-agent --probe-reminderkit\n\(tag)"))
     } catch {
         print("\nCould not create the test reminder: \(error)")

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set h = ov.health %}{% set f = ov.funnel %}{% set a = h.agent %}
-{% block title %}Overview · Household Agent{% endblock %}
+{% block title %}Overview · {{ cfg.dashboard.app_name }}{% endblock %}
 {% block heading %}Overview{% endblock %}
 {% block subheading %}<div class="sub" id="greeting"></div>{% endblock %}
 {% block actions %}<a class="btn sm" href="/lab">{{ icon("lab", 15) }}<span>Test a message</span></a>{% endblock %}

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set v = s["values"] %}
-{% block title %}Settings · Household Agent{% endblock %}
+{% block title %}Settings · {{ cfg.dashboard.app_name }}{% endblock %}
 {% block heading %}Settings{% endblock %}
 {% block subheading %}<div class="sub">Changes apply right away — no restart needed.</div>{% endblock %}
 
@@ -41,9 +41,9 @@
   <nav class="subnav">
     <a href="#people"><span class="tile t-green">{{ icon("users") }}</span>People & chats</a>
     <a href="#reminders"><span class="tile t-blue">{{ icon("check-square") }}</span>Reminders & calendar</a>
-    <a href="#collections"><span class="tile t-purple">{{ icon("bookmark") }}</span>Collections</a>
-    <a href="#daily"><span class="tile t-orange">{{ icon("sun") }}</span>Daily rhythm</a>
-    <a href="#model"><span class="tile t-indigo">{{ icon("sparkles") }}</span>Model</a>
+    <a href="#collections"><span class="tile t-orange">{{ icon("bookmark") }}</span>Collections</a>
+    <a href="#daily"><span class="tile t-yellow">{{ icon("sun") }}</span>Daily rhythm</a>
+    <a href="#model"><span class="tile t-mint">{{ icon("sparkles") }}</span>Model</a>
     <a href="#alerts"><span class="tile t-red">{{ icon("bell") }}</span>Alerts & dashboard</a>
     <a href="#mail"><span class="tile t-blue">{{ icon("mail") }}</span>Mail</a>
     <a href="#general"><span class="tile t-gray">{{ icon("globe") }}</span>General</a>

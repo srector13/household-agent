@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import initials, status_badge, cmd_card %}
-{% block title %}{{ e.sender_label }} · Household Agent{% endblock %}
+{% block title %}{{ e.sender_label }} · {{ cfg.dashboard.app_name }}{% endblock %}
 {% block back %}<a class="nav-back" href="/activity">{{ icon("chevron-left", 22) }}Activity</a>{% endblock %}
 {% block heading %}{% if e.is_from_me %}You → {% endif %}{{ e.sender_label or e.sender_handle }}{% endblock %}
 {% block subheading %}<div class="sub mono">{{ e.event_id }}</div>{% endblock %}

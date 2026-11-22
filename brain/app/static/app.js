@@ -1,4 +1,4 @@
-/* Household Agent dashboard runtime: SSE, iOS-style action sheets + banners, nav bar, pull-to-refresh, PWA. */
+/* Second Brain dashboard runtime: SSE, iOS-style action sheets + banners, nav bar, pull-to-refresh, PWA. */
 (function () {
   const HA = (window.HA = {});
   const listeners = new Set();

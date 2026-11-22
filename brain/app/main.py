@@ -112,7 +112,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         if state["mail"]:
             state["mail"].stop()
 
-    app = FastAPI(title="Household Agent brain", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="Second Brain", version=__version__, lifespan=lifespan)
     app.state.cfg, app.state.db, app.state.pipeline, app.state.queue = cfg, db, pipeline, queue
     app.state.health, app.state.settings, app.state.daily = health, settings, daily
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -310,7 +310,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
     async def test_alert():
         if not cfg.alerts.discord_webhook_url:
             return {"ok": False, "error": "No Discord webhook configured."}
-        ok = await alerter.send("test", "🔔 Test alert from the Household Agent dashboard.")
+        ok = await alerter.send("test", f"🔔 Test alert from {cfg.dashboard.app_name}.")
         return {"ok": ok, "error": None if ok else "Discord rejected the webhook call — check the URL."}
 
     @app.post("/api/system/backup", dependencies=[Depends(dash_auth)])
@@ -525,7 +525,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
         name = cfg.dashboard.app_name
         return JSONResponse({
             "name": name, "short_name": name if len(name) <= 12 else name.split()[0],
-            "description": "Household agent: messages → Reminders & Calendar, with a daily plan.",
+            "description": "Your second brain: messages become reminders, events and a daily plan.",
             "id": "/", "start_url": "/?source=pwa", "scope": "/", "display": "standalone",
             "orientation": "portrait", "background_color": "#F2F2F7", "theme_color": "#F2F2F7",
             "icons": [

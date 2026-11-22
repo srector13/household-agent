@@ -168,7 +168,7 @@ class AlertsConfig(BaseModel):
 class DashboardConfig(BaseModel):
     public_url: str = "http://localhost:8080"
     password: str | None = None
-    app_name: str = Field("Household Agent", min_length=1, max_length=40)  # home-screen / PWA name
+    app_name: str = Field("Second Brain", min_length=1, max_length=40)  # home-screen / PWA name
 
 
 class SecurityConfig(BaseModel):
