@@ -89,11 +89,13 @@ private struct PeopleGrid: View {
 }
 
 private struct Face: View {
+    @Environment(AppModel.self) private var app
     let p: Person
 
     var body: some View {
         let open = p.promises + p.waiting + p.todos
-        NavigationLink(value: Route.person(p.key)) {
+        // A button, not a NavigationLink: inside a List a link would draw a chevron next to each face.
+        Button { app.paths[.people, default: []].append(.person(p.key)) } label: {
             VStack(spacing: 6) {
                 AvatarView(name: p.label, photo: p.photo, size: 64, symbol: p.group ? "person.3.fill" : nil)
                     .overlay(alignment: .topTrailing) {

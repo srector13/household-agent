@@ -354,13 +354,13 @@ private struct NowLine: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Text(BrainDate.time(now))
+            Text(shortTime(now))
                 .font(.caption.weight(.bold)).monospacedDigit().foregroundStyle(.white)
                 .padding(.horizontal, 6).padding(.vertical, 3)
                 .background(Color.red, in: .rect(cornerRadius: 8))
-                .lineLimit(1).fixedSize()
-                .frame(width: 60, alignment: .trailing)
-                .padding(.trailing, 0)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .frame(width: 58, alignment: .trailing)
+                .padding(.leading, 2)
             Circle().fill(Color.red).frame(width: 12, height: 12)
                 .overlay(Circle().stroke(Color.red.opacity(0.2), lineWidth: 4))
                 .frame(width: 36)
@@ -571,7 +571,9 @@ private struct ReminderLine: View {
 
     private var metaText: String {
         var parts: [String] = []
-        if e.late, let d = BrainDate.day(e.due) { parts.append("Overdue · " + BrainDate.niceDay(d)) }
+        if e.late, let d = BrainDate.day(e.due) {
+            parts.append(Calendar.current.isDate(d, inSameDayAs: now) ? "Earlier today" : "Overdue · " + BrainDate.niceDay(d))
+        }
         if e.category == "promise" { parts.append("You promised") }
         else if e.category == "waiting" { parts.append("Waiting on") }
         if let p = e.person { parts.append(p.label) }
@@ -763,10 +765,16 @@ extension TimelineEntry {
 
     /// "9:00", "1:00 PM"-style label for the time column (nil for untimed reminders).
     var timeLabel: String? {
-        if isEvent { return startDate.map(BrainDate.time) }
+        if isEvent { return startDate.map(shortTime) }
         guard dueTime != nil, let a = atDate else { return nil }
-        return BrainDate.time(a)
+        return shortTime(a)
     }
+}
+
+/// "7:30" for the time column and the now line: "7:30 PM" is too wide for them, and the day
+/// reads top to bottom anyway.
+func shortTime(_ d: Date) -> String {
+    d.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
 }
 
 extension String {

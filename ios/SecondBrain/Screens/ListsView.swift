@@ -96,6 +96,7 @@ private struct ListTiles: View {
 }
 
 private struct Tile: View {
+    @Environment(AppModel.self) private var app
     let key: String
     let title: String
     let count: Int?
@@ -103,7 +104,7 @@ private struct Tile: View {
     let color: Color
 
     var body: some View {
-        NavigationLink(value: Route.list(key)) {
+        Button { app.paths[.lists, default: []].append(.list(key)) } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Image(systemName: symbol).font(.body.weight(.semibold)).foregroundStyle(.white)
