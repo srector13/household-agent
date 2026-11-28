@@ -74,6 +74,8 @@
         {{ text("rules.reminder_list", "Reminders list", "All reminders land here. Created on the Mac if it doesn't exist (see toggle).") }}
         {{ text("rules.default_alert_time", "Default alert time", "When a reminder has a later day but no time.", "time") }}
         <div class="full">{{ toggle("rules.no_time_due_now", "No time given? Due right now", "“Pack a bag for the kids” is due now, not later today. Reminders for later days still use the default time.") }}</div>
+        <div class="full">{{ toggle("rules.route_to_lists", "Put to-dos in your own lists", "“Grab milk” goes into your Groceries list when you have one, instead of the main list.") }}</div>
+        <div class="full">{{ toggle("rules.skip_duplicates", "Skip duplicates", "Nothing new when it’s already there — milk on Groceries, the dentist on your calendar.") }}</div>
         {{ text("rules.calendars.default", "Calendar", "Appointments and pickups go on this calendar (it must already exist).") }}
         {{ text("rules.calendars.default_duration_min", "Default event length (minutes)", "", "number", 'min="5" max="1440"') }}
         {{ text("rules.calendars.alert_minutes_before", "Event alert (minutes before)", "Blank = no alert.", "number", 'min="0" max="10080"') }}

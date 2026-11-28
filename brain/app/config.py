@@ -74,6 +74,10 @@ class RulesConfig(BaseModel):
     # A to-do with no time of day ("pack a bag for the kids") is due right now, not at the default
     # alert time — today or with no date at all. Later days ("tomorrow") still use default_alert_time.
     no_time_due_now: bool = True
+    # Put a to-do in one of your own Reminders lists when it clearly belongs there ("milk" → Groceries).
+    route_to_lists: bool = True
+    # Don't create what's already there: "milk" already on Groceries, the dentist already on your calendar.
+    skip_duplicates: bool = True
     review_threshold: float = Field(0.75, ge=0, le=1)
     reminder_list: str = Field("Household", min_length=1)  # every to-do goes to this one list
     create_missing_lists: bool = True

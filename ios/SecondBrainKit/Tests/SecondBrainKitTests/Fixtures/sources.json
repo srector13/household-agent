@@ -1,0 +1,70 @@
+{
+  "calendars": [
+    {
+      "name": "Family",
+      "color": "#FF9500",
+      "ours": true,
+      "shown": true,
+      "account": "iCloud",
+      "count": 1
+    },
+    {
+      "name": "Birthdays",
+      "color": "#8E8E93",
+      "ours": false,
+      "shown": true,
+      "account": null,
+      "count": 0
+    },
+    {
+      "name": "Personal",
+      "color": "#0A7AFF",
+      "ours": false,
+      "shown": true,
+      "account": "iCloud",
+      "count": 2
+    },
+    {
+      "name": "Work",
+      "color": "#34C759",
+      "ours": false,
+      "shown": true,
+      "account": "Exchange",
+      "count": 1
+    }
+  ],
+  "lists": [
+    {
+      "name": "Household",
+      "color": "#0A7AFF",
+      "ours": true,
+      "shown": true,
+      "account": "iCloud",
+      "count": 0
+    },
+    {
+      "name": "⏳ Waiting on",
+      "color": "#0E8C96",
+      "ours": true,
+      "shown": true,
+      "account": "iCloud",
+      "count": 0
+    },
+    {
+      "name": "Groceries",
+      "color": "#FF9500",
+      "ours": false,
+      "shown": true,
+      "account": "iCloud",
+      "count": 3
+    },
+    {
+      "name": "Work",
+      "color": "#8E8E93",
+      "ours": false,
+      "shown": true,
+      "account": "iCloud",
+      "count": 1
+    }
+  ]
+}

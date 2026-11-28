@@ -41,6 +41,7 @@ class Pipeline:
         self._tasks: set[asyncio.Task] = set()
         self.items = Items(db, cfg)
         self.push = None  # set by the app
+        self.external = None  # set by the app: your own calendars and lists (external.External)
         queue.items = self.items
         n = self.items.backfill()
         if n:
@@ -137,7 +138,8 @@ class Pipeline:
         open_items = self.items.open_for(chat_key(ev), datetime.now(timezone.utc))
         try:
             # Resolve relative dates against when the message arrived, not when we got to it.
-            res = await extract(self.cfg, self.llm, self.prompt, ev, ev.received_at, open_items)
+            lists = self.external.world()["lists"] if self.external else None
+            res = await extract(self.cfg, self.llm, self.prompt, ev, ev.received_at, open_items, lists)
         except LLMUnavailable as e:
             self.db.trace(event_id, "extract_error", {"error": str(e), "retry": True})
             self.db.update_event(event_id, last_error=str(e))
@@ -170,9 +172,18 @@ class Pipeline:
         ids = json.loads(row.get("open_refs") or "[]")
         return [it for it in (self.items.get(i) for i in ids) if it]
 
+    def _world(self, ev: Event) -> dict | None:
+        """Your lists and what's already in them, for routing and duplicate checks (None = nothing known)."""
+        world = self.external.world() if self.external else {"lists": [], "reminders": [], "events": []}
+        for it in self.items.listing(statuses=("proposed", "planned", "active"), collection=None):
+            if it["kind"] == "reminder" and it.get("origin_event_id") != ev.event_id and it.get("category") == "todo":
+                world["reminders"].append({"title": it["title"], "list": (it.get("state") or {}).get("list")})
+        return world
+
     async def _apply_plan(self, ev: Event, ex: Extraction, *, force: bool = False,
                           open_items: list[dict] | None = None) -> Plan:
-        p = plan(self.cfg, ev, ex, datetime.now(timezone.utc), force=force, open_items=open_items)
+        p = plan(self.cfg, ev, ex, datetime.now(timezone.utc), force=force, open_items=open_items,
+                 world=self._world(ev))
         self.db.trace(ev.event_id, "plan", {
             "commands": [c.model_dump(exclude_none=True) for c in p.commands], "review_reasons": p.review_reasons,
             "skipped": p.skipped, "forced": force,

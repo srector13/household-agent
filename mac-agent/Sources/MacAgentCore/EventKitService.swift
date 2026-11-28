@@ -115,8 +115,51 @@ public actor EventKitService: ItemStore {
     public func calendarSnapshot(rangeDays: Int, now: Date) async -> SnapshotParts {
         store.refreshSourcesIfNecessary()
         let horizon = now.addingTimeInterval(TimeInterval(max(rangeDays, 1)) * 86_400)
-        return SnapshotParts(events: snapshotEvents(from: now.addingTimeInterval(-2 * 3600), to: horizon),
-                             reminders: await snapshotReminders(from: now.addingTimeInterval(-30 * 86_400), to: horizon))
+        let past = now.addingTimeInterval(-TimeInterval(CalendarSnapshot.pastDays) * 86_400)
+        var reminders = await snapshotReminders(from: now.addingTimeInterval(-30 * 86_400), to: horizon)
+        if reminders != nil, let undated = await undatedReminders() {
+            reminders?.append(contentsOf: undated)
+        }
+        return SnapshotParts(events: snapshotEvents(from: past, to: horizon), reminders: reminders,
+                             calendars: snapshotCalendars())
+    }
+
+    /// Every calendar and reminder list (even empty ones). nil when neither kind is readable.
+    private func snapshotCalendars() -> [SnapshotCalendar]? {
+        guard !store.sources.isEmpty else { return nil }
+        var out: [SnapshotCalendar] = []
+        if Self.hasCalendarAccess() {
+            for c in store.calendars(for: .event) {
+                out.append(SnapshotCalendar(title: c.title, color: Self.hex(c.cgColor), kind: .event,
+                                            account: Self.nonEmpty(c.source?.title)))
+            }
+        }
+        if Self.hasRemindersAccess() {
+            for c in store.calendars(for: .reminder) {
+                out.append(SnapshotCalendar(title: c.title, color: Self.hex(c.cgColor), kind: .reminder,
+                                            account: Self.nonEmpty(c.source?.title)))
+            }
+        }
+        return out.isEmpty ? nil : out
+    }
+
+    /// Incomplete reminders with no due date (for duplicate checks). nil when unreadable.
+    private func undatedReminders() async -> [SnapshotReminder]? {
+        guard Self.hasRemindersAccess() else { return nil }
+        let store = self.store
+        let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)
+        return await withCheckedContinuation { (c: CheckedContinuation<[SnapshotReminder]?, Never>) in
+            _ = store.fetchReminders(matching: predicate) { reminders in
+                guard let reminders else { c.resume(returning: nil); return }
+                c.resume(returning: reminders.compactMap { r -> SnapshotReminder? in
+                    guard r.dueDateComponents == nil else { return nil }
+                    return SnapshotReminder(
+                        id: r.calendarItemIdentifier, title: r.title ?? "", list: r.calendar?.title ?? "",
+                        listColor: Self.hex(r.calendar?.cgColor), due: nil, dueTime: nil, priority: r.priority,
+                        ours: CalendarSnapshot.isOurs(notes: r.notes))
+                })
+            }
+        }
     }
 
     /// nil when Calendar is unreadable (no access or store not loaded yet).

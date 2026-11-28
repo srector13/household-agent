@@ -9,10 +9,10 @@
         "from_me": false,
         "text": "we should paint the fence sometime",
         "subject": null,
-        "received_at": "2026-11-21T21:14:05.712017-06:00",
+        "received_at": "2026-11-27T22:47:55.466897-06:00",
         "status": "needs_review",
         "status_label": "Needs review",
-        "reason": "Maybe paint the fence: due date 2026-11-19 is in the past",
+        "reason": "Maybe paint the fence: due date 2026-11-25 is in the past",
         "confidence": 0.95,
         "actions": [
           {
@@ -24,10 +24,10 @@
       },
       "proposals": [
         {
-          "command_id": "cmd_001a2013f2717bf203f24201b",
+          "command_id": "cmd_001a2207b36545f520ab882bd",
           "op": "create_reminder",
           "title": "Maybe paint the fence",
-          "due": "2026-11-19",
+          "due": "2026-11-25",
           "due_time": null,
           "start": null,
           "all_day": false,
@@ -38,7 +38,7 @@
         }
       ],
       "reasons": [
-        "Maybe paint the fence: due date 2026-11-19 is in the past"
+        "Maybe paint the fence: due date 2026-11-25 is in the past"
       ]
     }
   ]

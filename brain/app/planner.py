@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
@@ -150,11 +151,79 @@ def _event_times(cfg: Config, a_start: str, a_end: str | None, all_day_flag: boo
     return start, end, all_day
 
 
+_LEAD = re.compile(r"^(?:please\s+)?(?:buy|get|grab|pick\s+up|order|purchase|add|need|more)\s+", re.I)
+_WORDS = {"a", "an", "the", "some", "more", "of", "to", "for", "and"}
+
+
+def _norm_title(s: str) -> str:
+    """"Pick up milk" == "Milk" == "grab some milks" — for duplicate checks."""
+    t = unicodedata.normalize("NFKC", s or "").casefold().split(" · ")[0]
+    t = re.sub(r"[^\w\s]", " ", t)
+    t = " ".join(t.split())
+    for _ in range(2):
+        t = _LEAD.sub("", t)
+    words = [w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+             for w in t.split() if w not in _WORDS]
+    return " ".join(words)
+
+
+def _similar(a: str, b: str) -> bool:
+    x, y = set(_norm_title(a).split()), set(_norm_title(b).split())
+    if not x or not y:
+        return False
+    if x <= y or y <= x:
+        return True
+    return len(x & y) / len(x | y) >= 0.6
+
+
+def _canon(s: str | None) -> str:
+    return unicodedata.normalize("NFC", (s or "").strip()).casefold()
+
+
+def _route(cfg: Config, wanted: str | None, world: dict | None) -> str | None:
+    """The user's own list the model picked ("Groceries"), if it really exists."""
+    if not (wanted and world and cfg.rules.route_to_lists):
+        return None
+    w = _canon(wanted)
+    return next((name for name in world.get("lists") or [] if _canon(name) == w), None)
+
+
+def _duplicate_reminder(cfg: Config, title: str, world: dict | None) -> str | None:
+    if not (world and cfg.rules.skip_duplicates):
+        return None
+    n = _norm_title(title)
+    if not n:
+        return None
+    for r in world.get("reminders") or []:
+        if _norm_title(r.get("title") or "") == n:
+            return r.get("list") or "Reminders"
+    return None
+
+
+def _duplicate_event(cfg: Config, title: str, start: datetime, all_day: bool, world: dict | None) -> str | None:
+    if not (world and cfg.rules.skip_duplicates):
+        return None
+    for e in world.get("events") or []:
+        try:
+            s = datetime.fromisoformat(e["start"]).astimezone(cfg.tz)
+        except (KeyError, ValueError):
+            continue
+        if s.date() != start.date():
+            continue
+        if not (all_day or e.get("all_day")) and abs((s - start).total_seconds()) > 30 * 60:
+            continue
+        if _similar(title, e.get("title") or ""):
+            return e.get("calendar") or "your calendar"
+    return None
+
+
 def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool = False,
-         open_items: list[dict] | None = None) -> Plan:
+         open_items: list[dict] | None = None, world: dict | None = None) -> Plan:
     """Build commands. `force=True` (human-edited extraction) skips the confidence check.
 
     `open_items` are the conversation's editable items in the order shown to the model (ref 1 = index 0).
+    `world` is what's already in your calendars and lists (External.world()): your own reminder lists
+    (to route a to-do into "Groceries"), open reminders and events (to skip duplicates).
     """
     now = now.astimezone(cfg.tz)
     refs = {i + 1: it for i, it in enumerate(open_items or [])}
@@ -187,6 +256,11 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
         tag = item_tag(ev.event_id, seq)
         if a.type in ("create_reminder", "track_promise"):
             kind = "promise" if a.type == "track_promise" else "todo"
+            dup = _duplicate_reminder(cfg, title, world) if kind == "todo" else None
+            if dup:
+                p.skipped.append(f"{title}: already on {dup}")
+                continue
+            routed = _route(cfg, a.list, world) if kind == "todo" else None
             try:
                 due = _parse_date(a.due_date)
                 due_time = _parse_hhmm(a.due_time)
@@ -200,8 +274,8 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
             alert = _reminder_when(cfg, due, due_time, now, title, p.review_reasons)
             shown = f"{title} · {person}" if cfg.rules.person_in_title and not me else title
             payload = _organize(cfg, {
-                "title": shown, "list": cfg.rules.reminder_list,
-                "create_list_if_missing": cfg.rules.create_missing_lists,
+                "title": shown, "list": routed or cfg.rules.reminder_list,
+                "create_list_if_missing": cfg.rules.create_missing_lists and not routed,
                 "due": due.isoformat() if due else None,
                 "due_time": due_time.strftime("%H:%M") if (due and due_time) else None,
                 "alert": alert, "url": a.url, "notes": _notes(cfg, ev, a, tag, person, kind=kind, me=me), "tag": tag,
@@ -258,6 +332,10 @@ def plan(cfg: Config, ev: Event, ex: Extraction, now: datetime, *, force: bool =
                 start, end, all_day = _event_times(cfg, a.start, a.end, a.all_day, now, title, p.review_reasons)
             except ValueError as e:
                 p.review_reasons.append(f"{title}: invalid start/end ({e})")
+                continue
+            dup = _duplicate_event(cfg, title, start, all_day, world)
+            if dup:
+                p.skipped.append(f"{title}: already on {dup}")
                 continue
             shown = f"{title} · {person}" if cfg.rules.person_in_title and not me else title
             payload = {

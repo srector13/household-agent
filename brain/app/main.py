@@ -76,7 +76,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
     push = Push(cfg, db, sender=push_sender)
     alerter.push = pipeline.push = daily.push = push
     external = External(cfg, db)
-    daily.external = external
+    daily.external = pipeline.external = external
     people = People(cfg, db)
 
     def badge_count() -> int:
@@ -492,7 +492,7 @@ def create_app(cfg: Config | None = None, *, llm: LLMClient | None = None, alert
     app.include_router(build_router(
         cfg=cfg, db=db, pipeline=pipeline, daily=daily, health=health, queue=queue, external=external,
         people=people, weekly=weekly, focus=focus, quick=quick, settings=settings, push=push,
-        dash_auth=dash_auth, badge_count=badge_count))
+        dash_auth=dash_auth, badge_count=badge_count, wake=queue.wake, bus=bus))
 
     @app.post("/api/weekly/finish", dependencies=[Depends(dash_auth)])
     async def weekly_finish(body: dict = Body(default={})):

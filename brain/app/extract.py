@@ -69,7 +69,7 @@ def describe_item(cfg: Config, it: dict) -> str:
 
 
 def build_messages(cfg: Config, tpl: PromptTemplate, ev: Event, now: datetime,
-                   open_items: list[dict] | None = None) -> list[dict[str, str]]:
+                   open_items: list[dict] | None = None, lists: list[str] | None = None) -> list[dict[str, str]]:
     now = now.astimezone(cfg.tz)
     from .gate import self_chat
     is_self = self_chat(cfg, ev)
@@ -89,6 +89,7 @@ def build_messages(cfg: Config, tpl: PromptTemplate, ev: Event, now: datetime,
         "sender": ev.sender_label or ev.sender_handle or "unknown",
         "open_items": "\n".join(f"{i}. {describe_item(cfg, it)}" for i, it in enumerate(open_items or [], 1))
                       or "(none)",
+        "lists": ", ".join(f"“{n}”" for n in (lists or [])) or "(none — leave `list` null)",
         "collections": "\n".join(f"  - `{c.key}`: {c.description}" for c in cfg.collections if c.enabled)
                        or "  (none configured — do not use save_to_collection)",
         "direction": ("New note I wrote to MYSELF (notes-to-self capture)" if is_self
@@ -234,8 +235,8 @@ class ExtractResult:
 
 
 async def extract(cfg: Config, llm: LLMClient, tpl: PromptTemplate, ev: Event, now: datetime,
-                  open_items: list[dict] | None = None) -> ExtractResult:
-    messages = build_messages(cfg, tpl, ev, now, open_items)
+                  open_items: list[dict] | None = None, lists: list[str] | None = None) -> ExtractResult:
+    messages = build_messages(cfg, tpl, ev, now, open_items, lists if cfg.rules.route_to_lists else None)
     t = time.perf_counter()
     raw = await llm.complete(messages)
     ms = int((time.perf_counter() - t) * 1000)

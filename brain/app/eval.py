@@ -157,6 +157,7 @@ async def run_case(cfg: Config, llm: LLMClient, tpl: PromptTemplate, case: dict[
         # Score the model's dates, not the planner's "no time = due now" rule.
         pcfg = cfg.model_copy(deep=True)
         pcfg.rules.no_time_due_now = False
+        pcfg.rules.route_to_lists = pcfg.rules.skip_duplicates = False
         p = plan(pcfg, ev, res.extraction, now, open_items=open_items)
         out.update(commands=[c.model_dump() for c in p.commands], ms=res.duration_ms, raw=res.raw,
                    confidence=res.extraction.confidence, review=p.review_reasons)

@@ -46,7 +46,7 @@ def test_eggs_end_to_end(client, llm):
         assert s in steps
     extract_step = next(t for t in ev["trace"] if t["step"] == "extract")
     assert extract_step["data"]["prompt"][0]["role"] == "system"
-    assert ev["event"]["prompt_version"] == "extract-v4"
+    assert ev["event"]["prompt_version"] == "extract-v5"
 
     # Undo → delete_item queued → done → undone
     r = client.post("/actions/undo/imessage:1", follow_redirects=False)

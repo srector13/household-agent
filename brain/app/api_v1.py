@@ -7,15 +7,47 @@ strictly. Actions reuse the existing endpoints (/api/items/..., /actions/..., /a
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends, HTTPException
+import base64
+import hashlib
+
+from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from .gate import normalize_handle
+from .people import AvatarIn, AvatarReport
+from .settings import SettingsError
+from .timeline import Timeline
 
 from . import __version__
 from . import models as m
 from . import views
 from .home import home as build_home
+
+
+class SourceToggle(BaseModel):
+    kind: str = Field(pattern="^(calendar|list)$")
+    name: str = Field(min_length=1, max_length=200)
+    shown: bool
+
+
+class AppleDone(BaseModel):
+    done: bool = True
+
+
+class AppleMove(BaseModel):
+    due: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    due_time: str | None = Field(default=None, pattern=r"^\d{1,2}:\d{2}$")
+
+
+class NewPerson(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    label: str = Field(min_length=1, max_length=60)
+    handle: str = Field(min_length=3, max_length=120)
+    photo: str | None = Field(default=None, max_length=400_000)   # base64 JPEG
+    is_me: bool = False
 
 STATUS_LABEL = {
     m.DONE: "Done", m.QUEUED: "Queued", m.RECEIVED: "Processing", m.SKIPPED: "Skipped",
@@ -43,9 +75,11 @@ def _plain(v: Any) -> Any:
 
 
 def build_router(*, cfg, db, pipeline, daily, health, queue, external, people, weekly, focus, quick,
-                 settings, push, dash_auth: Callable, badge_count: Callable[[], int]) -> APIRouter:
+                 settings, push, dash_auth: Callable, badge_count: Callable[[], int],
+                 wake: Callable | None = None, bus=None) -> APIRouter:
     r = APIRouter(prefix="/api/v1", dependencies=[Depends(dash_auth)])
     items = pipeline.items
+    timeline_builder = Timeline(cfg, db, items, external, people)
 
     def collection_label(key: str | None) -> str | None:
         if not key:
@@ -333,6 +367,117 @@ def build_router(*, cfg, db, pipeline, daily, health, queue, external, people, w
                       (after, max(1, min(limit, 100))))
         last = db.one("SELECT MAX(id) n FROM push_log")["n"] or 0
         return {"items": list(reversed(rows)), "last_id": last, "badge": badge_count()}
+
+    # ---- timeline (Today) ---------------------------------------------------------------------
+    @r.get("/timeline")
+    async def timeline(day: str | None = None):
+        today = daily.today()
+        try:
+            d = date.fromisoformat(day) if day else today
+        except ValueError:
+            raise HTTPException(400, "day must be YYYY-MM-DD") from None
+        out = timeline_builder.build(d, datetime.now(cfg.tz), today)
+        first = db.recent_events(limit=200, status=m.NEEDS_REVIEW)
+        out["banner"] = ({"count": len(first), "entry": {"event": event_dto(first[0]), "proposals": proposals(first[0]),
+                                                          "reasons": review_reasons(first[0])}}
+                         if first else None)
+        return _plain(out)
+
+    # ---- calendars & lists shown on Today ---------------------------------------------------------
+    @r.get("/sources")
+    async def sources():
+        return external.sources()
+
+    @r.post("/sources")
+    async def set_source(body: SourceToggle):
+        external.set_shown(body.kind, body.name, body.shown)
+        if bus:
+            bus.publish({"type": "snapshot"})
+        return external.sources()
+
+    # ---- your own reminders (not made by Second Brain) ----------------------------------------
+    async def _queue_apple(apple_id: str, changes: dict, purpose: str, why: str) -> None:
+        db.insert_command(f"app:{daily.today().isoformat()}", "update_item",
+                          {"apple_item_id": apple_id, "tag": None, "kind": "reminder", "changes": changes,
+                           "notes_append": None},
+                          "pending", purpose=purpose, meta={"why": why, "external": True})
+        if wake:
+            await wake()
+        if bus:
+            bus.publish({"type": "snapshot"})
+
+    @r.post("/apple/{apple_id:path}/done")
+    async def apple_done(apple_id: str, body: AppleDone = Body(default_factory=AppleDone)):
+        await _queue_apple(apple_id, {"completed": body.done}, "complete" if body.done else "update",
+                           "ticked in the app" if body.done else "unticked in the app")
+        external.mark_done(apple_id, body.done)
+        return {"ok": True, "status": "completed" if body.done else "open"}
+
+    @r.post("/apple/{apple_id:path}/move")
+    async def apple_move(apple_id: str, body: AppleMove):
+        try:
+            d = date.fromisoformat(body.due)
+            hh, mm = (int(x) for x in body.due_time.split(":")) if body.due_time else (None, None)
+            t = time(hh, mm) if body.due_time else None
+        except ValueError:
+            raise HTTPException(400, "bad date or time") from None
+        due_time = t.strftime("%H:%M") if t else None
+        alert = datetime.combine(d, t or time.fromisoformat(cfg.rules.default_alert_time), cfg.tz).isoformat()
+        await _queue_apple(apple_id, {"due": d.isoformat(), "due_time": due_time, "alert": alert}, "update",
+                           "moved in the app")
+        external.patch_reminder(apple_id, due=d.isoformat(), due_time=due_time)
+        label = d.strftime("%a %b %-d") + (f", {t.strftime('%-I:%M %p')}" if t else "")
+        return {"ok": True, "status": "moved", "label": label}
+
+    # ---- people from Contacts --------------------------------------------------------------------
+    def _allow_rows() -> list[dict]:
+        return [a.model_dump(mode="json") for a in cfg.watch.imessage.allow]
+
+    @r.post("/people")
+    async def add_person(body: NewPerson):
+        h = normalize_handle(body.handle)
+        rows = _allow_rows()
+        hit = next((a for a in rows if a.get("handle") and normalize_handle(a["handle"]) == h), None)
+        if hit and hit.get("enabled", True):
+            raise HTTPException(409, "already watching")
+        if hit:
+            hit.update(enabled=True, label=body.label.strip(), is_me=body.is_me)
+        else:
+            rows.append({"handle": body.handle.strip(), "chat_id": None, "label": body.label.strip(),
+                         "enabled": True, "is_me": body.is_me})
+        try:
+            settings.update({"watch": {"imessage": {"allow": rows}}})
+        except SettingsError as e:
+            raise HTTPException(400, str(e)) from None
+        photo = None
+        if body.photo:
+            try:
+                raw = base64.b64decode(body.photo, validate=True)
+                photo = (body.photo, hashlib.sha1(raw).hexdigest()[:16])
+            except ValueError:
+                photo = None
+        people.store_avatars(AvatarReport(people=[AvatarIn(
+            handle=body.handle, name=(body.name or "").strip() or None,
+            image=photo[0] if photo else None, image_hash=photo[1] if photo else None)]))
+        p = next((p for p in people.roster() if p.get("handle") and normalize_handle(p["handle"]) == h), None)
+        if not p:  # "me" isn't in the roster; describe it anyway
+            p = {"key": "h-me", "label": body.label, "handle": body.handle, "group": False,
+                 "photo": people.avatar_url(body.handle), "contact_name": body.name}
+        return {"person": person_dto(p)}
+
+    @r.delete("/people/{key}")
+    async def remove_person(key: str):
+        p = people.find(key)
+        if not p or not (p.get("handle") or p.get("chat_id")):
+            raise HTTPException(404, "not someone you watch")
+        rows = [a for a in _allow_rows()
+                if not ((p.get("handle") and a.get("handle") and normalize_handle(a["handle"]) == normalize_handle(p["handle"]))
+                        or (p.get("chat_id") and a.get("chat_id") == p["chat_id"]))]
+        try:
+            settings.update({"watch": {"imessage": {"allow": rows}}})
+        except SettingsError as e:
+            raise HTTPException(400, str(e)) from None
+        return {"ok": True, "status": "removed"}
 
     return r
 

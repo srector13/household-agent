@@ -74,10 +74,13 @@ def test_nudge_once_on_reset_day(pclient, sent):
     seed(client, llm)
     w = client.app_state.weekly
     tz = client.app_state.cfg.tz
-    assert asyncio.run(w.tick(datetime(2026, 11, 22, 16, 0, tzinfo=tz))) == 0  # too early
-    assert asyncio.run(w.tick(datetime(2026, 11, 22, 17, 1, tzinfo=tz))) == 1
+    today = datetime.now(tz).date()
+    sun = today + timedelta(days=(6 - today.weekday()) % 7)  # the coming reset day, so ages match the seed
+    at = lambda h, m: datetime(sun.year, sun.month, sun.day, h, m, tzinfo=tz)  # noqa: E731
+    assert asyncio.run(w.tick(at(16, 0))) == 0  # too early
+    assert asyncio.run(w.tick(at(17, 1))) == 1
     assert sent[-1]["url"] == "/weekly" and "3 things gone stale" in sent[-1]["body"]
-    assert asyncio.run(w.tick(datetime(2026, 11, 22, 18, 0, tzinfo=tz))) == 0  # once
+    assert asyncio.run(w.tick(at(18, 0))) == 0  # once
     assert asyncio.run(w.tick(datetime(2026, 11, 23, 17, 30, tzinfo=tz))) == 0  # Monday
 
 

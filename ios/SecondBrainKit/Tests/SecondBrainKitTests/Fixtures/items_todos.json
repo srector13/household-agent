@@ -7,7 +7,7 @@
   },
   "items": [
     {
-      "id": "itm_001a2013f27165116229c",
+      "id": "itm_001a2207b36501df14ff8",
       "title": "Maybe paint the fence",
       "kind": "reminder",
       "category": "todo",
@@ -15,7 +15,7 @@
       "collection_label": null,
       "person": "Wife",
       "status": "proposed",
-      "due": "2026-11-19",
+      "due": "2026-11-25",
       "due_time": null,
       "start": null,
       "end": null,
@@ -29,28 +29,28 @@
       "url": null,
       "first_step": null,
       "steps": [],
-      "notes": "👤 Wife · Sat Nov 21\nWife: “we should paint the fence sometime”\n[ha:imessage:3]",
+      "notes": "👤 Wife · Fri Nov 27\nWife: “we should paint the fence sometime”\n[ha:imessage:3]",
       "origin_event_id": "imessage:3",
-      "created_at": "2026-11-22T03:14:05.718+00:00",
-      "updated_at": "2026-11-22T03:14:05.718+00:00",
+      "created_at": "2026-11-28T04:47:55.472+00:00",
+      "updated_at": "2026-11-28T04:47:55.472+00:00",
       "completed_at": null,
       "origin": {
         "text": "we should paint the fence sometime",
         "sender": "Wife",
         "from_me": false,
-        "at": "2026-11-21T21:14:05.712017-06:00"
+        "at": "2026-11-27T22:47:55.466897-06:00"
       },
       "log": [
         {
           "action": "proposed",
-          "at": "2026-11-22T03:14:05.719+00:00",
+          "at": "2026-11-28T04:47:55.472+00:00",
           "event_id": "imessage:3",
           "detail": null
         }
       ]
     },
     {
-      "id": "itm_001a2013f26ebebf0b31f",
+      "id": "itm_001a2207b36313b973cdc",
       "title": "Send Wife the photos",
       "kind": "reminder",
       "category": "todo",
@@ -58,7 +58,7 @@
       "collection_label": null,
       "person": "Wife",
       "status": "active",
-      "due": "2026-11-22",
+      "due": "2026-11-28",
       "due_time": null,
       "start": null,
       "end": null,
@@ -72,34 +72,34 @@
       "url": null,
       "first_step": null,
       "steps": [],
-      "notes": "👤 Wife · Sat Nov 21\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1#1]",
+      "notes": "👤 Wife · Fri Nov 27\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1#1]",
       "origin_event_id": "imessage:1",
-      "created_at": "2026-11-22T03:14:05.675+00:00",
-      "updated_at": "2026-11-22T03:14:05.704+00:00",
+      "created_at": "2026-11-28T04:47:55.441+00:00",
+      "updated_at": "2026-11-28T04:47:55.461+00:00",
       "completed_at": null,
       "origin": {
         "text": "call the plumber at 3 today, and send me the photos",
         "sender": "Wife",
         "from_me": false,
-        "at": "2026-11-21T21:14:05.666981-06:00"
+        "at": "2026-11-27T22:47:55.433535-06:00"
       },
       "log": [
         {
           "action": "planned",
-          "at": "2026-11-22T03:14:05.675+00:00",
+          "at": "2026-11-28T04:47:55.441+00:00",
           "event_id": "imessage:1",
           "detail": null
         },
         {
           "action": "created",
-          "at": "2026-11-22T03:14:05.703+00:00",
+          "at": "2026-11-28T04:47:55.461+00:00",
           "event_id": "imessage:1",
           "detail": null
         }
       ]
     },
     {
-      "id": "itm_001a2013f26ea8835a73a",
+      "id": "itm_001a2207b3630556a0b9f",
       "title": "Call the plumber",
       "kind": "reminder",
       "category": "todo",
@@ -107,7 +107,7 @@
       "collection_label": null,
       "person": "Wife",
       "status": "active",
-      "due": "2026-11-21",
+      "due": "2026-11-27",
       "due_time": "15:00",
       "start": null,
       "end": null,
@@ -121,27 +121,27 @@
       "url": null,
       "first_step": null,
       "steps": [],
-      "notes": "👤 Wife · Sat Nov 21\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1]",
+      "notes": "👤 Wife · Fri Nov 27\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1]",
       "origin_event_id": "imessage:1",
-      "created_at": "2026-11-22T03:14:05.674+00:00",
-      "updated_at": "2026-11-22T03:14:05.698+00:00",
+      "created_at": "2026-11-28T04:47:55.440+00:00",
+      "updated_at": "2026-11-28T04:47:55.457+00:00",
       "completed_at": null,
       "origin": {
         "text": "call the plumber at 3 today, and send me the photos",
         "sender": "Wife",
         "from_me": false,
-        "at": "2026-11-21T21:14:05.666981-06:00"
+        "at": "2026-11-27T22:47:55.433535-06:00"
       },
       "log": [
         {
           "action": "planned",
-          "at": "2026-11-22T03:14:05.674+00:00",
+          "at": "2026-11-28T04:47:55.440+00:00",
           "event_id": "imessage:1",
           "detail": null
         },
         {
           "action": "created",
-          "at": "2026-11-22T03:14:05.698+00:00",
+          "at": "2026-11-28T04:47:55.457+00:00",
           "event_id": "imessage:1",
           "detail": null
         }
@@ -152,13 +152,13 @@
   "upcoming": [
     {
       "title": "Call the plumber",
-      "when": "2026-11-21T15:00:00-06:00",
+      "when": "2026-11-27T15:00:00-06:00",
       "all_day": false,
       "kind": "reminder",
       "where": "Household",
       "who": "Wife",
       "location": null,
-      "item_id": "itm_001a2013f26ea8835a73a",
+      "item_id": "itm_001a2207b3630556a0b9f",
       "event_id": "imessage:1",
       "external": false,
       "apple_id": null,
@@ -167,13 +167,13 @@
     },
     {
       "title": "Send Wife the photos",
-      "when": "2026-11-22T23:59:00-06:00",
+      "when": "2026-11-28T23:59:00-06:00",
       "all_day": true,
       "kind": "reminder",
       "where": "Household",
       "who": "Wife",
       "location": null,
-      "item_id": "itm_001a2013f26ebebf0b31f",
+      "item_id": "itm_001a2207b36313b973cdc",
       "event_id": "imessage:1",
       "external": false,
       "apple_id": null,

@@ -15,7 +15,7 @@
           "person": "Wife",
           "items": [
             {
-              "id": "itm_001a2013f26f50966b105",
+              "id": "itm_001a2207b3638e7bac97a",
               "title": "Kindle",
               "kind": "reminder",
               "category": "collection",
@@ -37,16 +37,16 @@
               "url": "https://example.com/k",
               "first_step": null,
               "steps": [],
-              "notes": "👤 Wife · Sat Nov 21\nWife: “I'd love a kindle”\nhttps://example.com/k\n[ha:imessage:2]",
+              "notes": "👤 Wife · Fri Nov 27\nWife: “I'd love a kindle”\nhttps://example.com/k\n[ha:imessage:2]",
               "origin_event_id": "imessage:2",
-              "created_at": "2026-11-22T03:14:05.685+00:00",
-              "updated_at": "2026-11-22T03:14:05.709+00:00",
+              "created_at": "2026-11-28T04:47:55.448+00:00",
+              "updated_at": "2026-11-28T04:47:55.465+00:00",
               "completed_at": null,
               "origin": {
                 "text": "I'd love a kindle",
                 "sender": "Wife",
                 "from_me": false,
-                "at": "2026-11-21T21:14:05.678184-06:00"
+                "at": "2026-11-27T22:47:55.443535-06:00"
               }
             }
           ]
@@ -57,13 +57,13 @@
   "upcoming": [
     {
       "title": "Call the plumber",
-      "when": "2026-11-21T15:00:00-06:00",
+      "when": "2026-11-27T15:00:00-06:00",
       "all_day": false,
       "kind": "reminder",
       "where": "Household",
       "who": "Wife",
       "location": null,
-      "item_id": "itm_001a2013f26ea8835a73a",
+      "item_id": "itm_001a2207b3630556a0b9f",
       "event_id": "imessage:1",
       "external": false,
       "apple_id": null,
@@ -72,13 +72,13 @@
     },
     {
       "title": "Send Wife the photos",
-      "when": "2026-11-22T23:59:00-06:00",
+      "when": "2026-11-28T23:59:00-06:00",
       "all_day": true,
       "kind": "reminder",
       "where": "Household",
       "who": "Wife",
       "location": null,
-      "item_id": "itm_001a2013f26ebebf0b31f",
+      "item_id": "itm_001a2207b36313b973cdc",
       "event_id": "imessage:1",
       "external": false,
       "apple_id": null,

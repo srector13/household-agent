@@ -7,7 +7,7 @@
     "from_me": false,
     "text": "call the plumber at 3 today, and send me the photos",
     "subject": null,
-    "received_at": "2026-11-21T21:14:05.666981-06:00",
+    "received_at": "2026-11-27T22:47:55.433535-06:00",
     "status": "done",
     "status_label": "Done",
     "reason": null,
@@ -40,75 +40,75 @@
       "label": "Received",
       "summary": null,
       "duration_ms": null,
-      "at": "2026-11-22T03:14:05.670+00:00"
+      "at": "2026-11-28T04:47:55.435+00:00"
     },
     {
       "step": "allowlist",
       "label": "Allowlist",
       "summary": "Wife",
       "duration_ms": null,
-      "at": "2026-11-22T03:14:05.670+00:00"
+      "at": "2026-11-28T04:47:55.436+00:00"
     },
     {
       "step": "gate",
       "label": "Gate",
       "summary": "passed",
       "duration_ms": null,
-      "at": "2026-11-22T03:14:05.671+00:00"
+      "at": "2026-11-28T04:47:55.436+00:00"
     },
     {
       "step": "extract",
       "label": "LLM extraction",
       "summary": "2 actions · 95%",
       "duration_ms": 0,
-      "at": "2026-11-22T03:14:05.672+00:00"
+      "at": "2026-11-28T04:47:55.438+00:00"
     },
     {
       "step": "plan",
       "label": "Planner",
       "summary": "2 commands",
       "duration_ms": null,
-      "at": "2026-11-22T03:14:05.673+00:00"
+      "at": "2026-11-28T04:47:55.439+00:00"
     },
     {
       "step": "queue",
       "label": "Queued for Mac",
       "summary": null,
       "duration_ms": null,
-      "at": "2026-11-22T03:14:05.676+00:00"
+      "at": "2026-11-28T04:47:55.442+00:00"
     },
     {
       "step": "command_sent",
       "label": "Sent to Mac",
       "summary": "create reminder",
       "duration_ms": null,
-      "at": "2026-11-22T03:14:05.692+00:00"
+      "at": "2026-11-28T04:47:55.453+00:00"
     },
     {
       "step": "command_sent",
       "label": "Sent to Mac",
       "summary": "create reminder",
       "duration_ms": null,
-      "at": "2026-11-22T03:14:05.692+00:00"
+      "at": "2026-11-28T04:47:55.453+00:00"
     },
     {
       "step": "command_result",
       "label": "Mac result",
       "summary": "create reminder · done",
       "duration_ms": null,
-      "at": "2026-11-22T03:14:05.697+00:00"
+      "at": "2026-11-28T04:47:55.456+00:00"
     },
     {
       "step": "command_result",
       "label": "Mac result",
       "summary": "create reminder · done",
       "duration_ms": null,
-      "at": "2026-11-22T03:14:05.703+00:00"
+      "at": "2026-11-28T04:47:55.460+00:00"
     }
   ],
   "commands": [
     {
-      "command_id": "cmd_001a2013f26ea1db4b3c92894",
+      "command_id": "cmd_001a2207b3630c24a075a05ce",
       "op": "create_reminder",
       "status": "done",
       "purpose": "create",
@@ -116,10 +116,10 @@
       "error": null,
       "undo": false,
       "generation": 0,
-      "item_id": "itm_001a2013f26ea8835a73a"
+      "item_id": "itm_001a2207b3630556a0b9f"
     },
     {
-      "command_id": "cmd_001a2013f26eb66dd61b4268e",
+      "command_id": "cmd_001a2207b36315cfceb2f86c4",
       "op": "create_reminder",
       "status": "done",
       "purpose": "create",
@@ -127,12 +127,12 @@
       "error": null,
       "undo": false,
       "generation": 0,
-      "item_id": "itm_001a2013f26ebebf0b31f"
+      "item_id": "itm_001a2207b36313b973cdc"
     }
   ],
   "items": [
     {
-      "id": "itm_001a2013f26ea8835a73a",
+      "id": "itm_001a2207b3630556a0b9f",
       "title": "Call the plumber",
       "kind": "reminder",
       "category": "todo",
@@ -140,7 +140,7 @@
       "collection_label": null,
       "person": "Wife",
       "status": "active",
-      "due": "2026-11-21",
+      "due": "2026-11-27",
       "due_time": "15:00",
       "start": null,
       "end": null,
@@ -154,14 +154,14 @@
       "url": null,
       "first_step": null,
       "steps": [],
-      "notes": "👤 Wife · Sat Nov 21\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1]",
+      "notes": "👤 Wife · Fri Nov 27\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1]",
       "origin_event_id": "imessage:1",
-      "created_at": "2026-11-22T03:14:05.674+00:00",
-      "updated_at": "2026-11-22T03:14:05.698+00:00",
+      "created_at": "2026-11-28T04:47:55.440+00:00",
+      "updated_at": "2026-11-28T04:47:55.457+00:00",
       "completed_at": null
     },
     {
-      "id": "itm_001a2013f26ebebf0b31f",
+      "id": "itm_001a2207b36313b973cdc",
       "title": "Send Wife the photos",
       "kind": "reminder",
       "category": "todo",
@@ -169,7 +169,7 @@
       "collection_label": null,
       "person": "Wife",
       "status": "active",
-      "due": "2026-11-22",
+      "due": "2026-11-28",
       "due_time": null,
       "start": null,
       "end": null,
@@ -183,17 +183,17 @@
       "url": null,
       "first_step": null,
       "steps": [],
-      "notes": "👤 Wife · Sat Nov 21\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1#1]",
+      "notes": "👤 Wife · Fri Nov 27\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1#1]",
       "origin_event_id": "imessage:1",
-      "created_at": "2026-11-22T03:14:05.675+00:00",
-      "updated_at": "2026-11-22T03:14:05.704+00:00",
+      "created_at": "2026-11-28T04:47:55.441+00:00",
+      "updated_at": "2026-11-28T04:47:55.461+00:00",
       "completed_at": null
     }
   ],
   "proposals": [],
   "reasons": [],
   "reasoning": "test",
-  "prompt_version": "extract-v4",
-  "extraction": "{\n  \"actionable\": true,\n  \"actions\": [\n    {\n      \"type\": \"create_reminder\",\n      \"ref\": null,\n      \"collection\": null,\n      \"person\": null,\n      \"title\": \"Call the plumber\",\n      \"list\": null,\n      \"due_date\": \"2026-11-21\",\n      \"due_time\": \"15:00\",\n      \"start\": null,\n      \"end\": null,\n      \"all_day\": false,\n      \"location\": null,\n      \"calendar\": null,\n      \"url\": null,\n      \"notes\": null,\n      \"summary\": null,\n      \"first_step\": null,\n      \"steps\": [],\n      \"source_quote\": \"Call the plumber\"\n    },\n    {\n      \"type\": \"track_promise\",\n      \"ref\": null,\n      \"collection\": null,\n      \"person\": null,\n      \"title\": \"Send Wife the photos\",\n      \"list\": null,\n      \"due_date\": \"2026-11-22\",\n      \"due_time\": null,\n      \"start\": null,\n      \"end\": null,\n      \"all_day\": false,\n      \"location\": null,\n      \"calendar\": null,\n      \"url\": null,\n      \"notes\": null,\n      \"summary\": null,\n      \"first_step\": null,\n      \"steps\": [],\n      \"source_quote\": \"x\"\n    }\n  ],\n  \"confidence\": 0.95,\n  \"reasoning_brief\": \"test\"\n}",
+  "prompt_version": "extract-v5",
+  "extraction": "{\n  \"actionable\": true,\n  \"actions\": [\n    {\n      \"type\": \"create_reminder\",\n      \"ref\": null,\n      \"collection\": null,\n      \"person\": null,\n      \"title\": \"Call the plumber\",\n      \"list\": null,\n      \"due_date\": \"2026-11-27\",\n      \"due_time\": \"15:00\",\n      \"start\": null,\n      \"end\": null,\n      \"all_day\": false,\n      \"location\": null,\n      \"calendar\": null,\n      \"url\": null,\n      \"notes\": null,\n      \"summary\": null,\n      \"first_step\": null,\n      \"steps\": [],\n      \"source_quote\": \"Call the plumber\"\n    },\n    {\n      \"type\": \"track_promise\",\n      \"ref\": null,\n      \"collection\": null,\n      \"person\": null,\n      \"title\": \"Send Wife the photos\",\n      \"list\": null,\n      \"due_date\": \"2026-11-28\",\n      \"due_time\": null,\n      \"start\": null,\n      \"end\": null,\n      \"all_day\": false,\n      \"location\": null,\n      \"calendar\": null,\n      \"url\": null,\n      \"notes\": null,\n      \"summary\": null,\n      \"first_step\": null,\n      \"steps\": [],\n      \"source_quote\": \"x\"\n    }\n  ],\n  \"confidence\": 0.95,\n  \"reasoning_brief\": \"test\"\n}",
   "last_error": null
 }

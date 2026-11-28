@@ -1,6 +1,6 @@
 {
   "greeting": "Good evening",
-  "now": "2026-11-21T21:14:05.737999-06:00",
+  "now": "2026-11-27T22:47:55.494053-06:00",
   "done_today": 0,
   "problems": [
     "The Mac agent hasn't connected yet."
@@ -8,7 +8,7 @@
   "next": null,
   "picks": [
     {
-      "item_id": "itm_001a2013f26ea8835a73a",
+      "item_id": "itm_001a2207b3630556a0b9f",
       "title": "Call the plumber",
       "why": "due today",
       "first_step": "Find the card",
@@ -33,10 +33,10 @@
           "from_me": false,
           "text": "we should paint the fence sometime",
           "subject": null,
-          "received_at": "2026-11-21T21:14:05.712017-06:00",
+          "received_at": "2026-11-27T22:47:55.466897-06:00",
           "status": "needs_review",
           "status_label": "Needs review",
-          "reason": "Maybe paint the fence: due date 2026-11-19 is in the past",
+          "reason": "Maybe paint the fence: due date 2026-11-25 is in the past",
           "confidence": 0.95,
           "actions": [
             {
@@ -59,13 +59,13 @@
   "agenda": [
     {
       "title": "Send Wife the photos",
-      "when": "2026-11-22T23:59:00-06:00",
+      "when": "2026-11-28T23:59:00-06:00",
       "all_day": true,
       "kind": "reminder",
       "where": "Household",
       "who": "Wife",
       "location": null,
-      "item_id": "itm_001a2013f26ebebf0b31f",
+      "item_id": "itm_001a2207b36313b973cdc",
       "event_id": "imessage:1",
       "external": false,
       "apple_id": null,
@@ -74,7 +74,7 @@
     },
     {
       "title": "Dentist",
-      "when": "2026-11-22T09:00:00-06:00",
+      "when": "2026-11-28T09:00:00-06:00",
       "all_day": false,
       "kind": "event",
       "where": "Home",
@@ -89,7 +89,7 @@
     },
     {
       "title": "Renew passport",
-      "when": "2026-11-23T23:59:00-06:00",
+      "when": "2026-11-29T23:59:00-06:00",
       "all_day": true,
       "kind": "reminder",
       "where": "Personal",
@@ -111,7 +111,7 @@
       "kind": "reminder",
       "category": "collection",
       "collection": "gift_ideas",
-      "at": "2026-11-22T03:14:05.709+00:00",
+      "at": "2026-11-28T04:47:55.465+00:00",
       "via": null,
       "event_id": "imessage:2"
     },
@@ -122,7 +122,7 @@
       "kind": "reminder",
       "category": "todo",
       "collection": null,
-      "at": "2026-11-22T03:14:05.703+00:00",
+      "at": "2026-11-28T04:47:55.461+00:00",
       "via": null,
       "event_id": "imessage:1"
     },
@@ -133,7 +133,7 @@
       "kind": "reminder",
       "category": "todo",
       "collection": null,
-      "at": "2026-11-22T03:14:05.698+00:00",
+      "at": "2026-11-28T04:47:55.457+00:00",
       "via": null,
       "event_id": "imessage:1"
     }

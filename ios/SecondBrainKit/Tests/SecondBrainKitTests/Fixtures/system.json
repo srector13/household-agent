@@ -1,5 +1,5 @@
 {
-  "version": "0.9.0",
+  "version": "0.11.0",
   "health": {
     "agent": {
       "online": false,
@@ -44,42 +44,6 @@
   },
   "daily": [
     {
-      "date": "2026-11-08",
-      "messages": 0,
-      "actionable": 0,
-      "created": 0
-    },
-    {
-      "date": "2026-11-09",
-      "messages": 0,
-      "actionable": 0,
-      "created": 0
-    },
-    {
-      "date": "2026-11-10",
-      "messages": 0,
-      "actionable": 0,
-      "created": 0
-    },
-    {
-      "date": "2026-11-11",
-      "messages": 0,
-      "actionable": 0,
-      "created": 0
-    },
-    {
-      "date": "2026-11-12",
-      "messages": 0,
-      "actionable": 0,
-      "created": 0
-    },
-    {
-      "date": "2026-11-13",
-      "messages": 0,
-      "actionable": 0,
-      "created": 0
-    },
-    {
       "date": "2026-11-14",
       "messages": 0,
       "actionable": 0,
@@ -123,6 +87,42 @@
     },
     {
       "date": "2026-11-21",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-22",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-23",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-24",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-25",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-26",
+      "messages": 0,
+      "actionable": 0,
+      "created": 0
+    },
+    {
+      "date": "2026-11-27",
       "messages": 3,
       "actionable": 3,
       "created": 3
@@ -131,18 +131,18 @@
   "alerts": [],
   "commands": [
     {
-      "command_id": "cmd_001a2013f2717bf203f24201b",
+      "command_id": "cmd_001a2207b36545f520ab882bd",
       "op": "create_reminder",
       "status": "held",
       "title": "Maybe paint the fence",
       "sender": "Wife",
-      "created_at": "2026-11-22T03:14:05.719+00:00"
+      "created_at": "2026-11-28T04:47:55.476+00:00"
     }
   ],
   "last_backup": null,
   "db": {
-    "path": "/tmp/pytest-of-root/pytest-80/test_every_screen0/brain.db",
-    "size_bytes": 1054728,
+    "path": "/tmp/pytest-of-root/pytest-101/test_every_screen0/brain.db",
+    "size_bytes": 1062968,
     "counts": {
       "events": 3,
       "trace": 24,

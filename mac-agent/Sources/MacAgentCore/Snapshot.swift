@@ -85,30 +85,67 @@ public struct SnapshotReminder: Codable, Equatable, Sendable {
     }
 }
 
+/// One calendar or reminder list, listed even when it is empty (the app's "Show on Today" picker).
+public struct SnapshotCalendar: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable { case event, reminder }
+
+    public var title: String
+    public var color: String?
+    public var kind: Kind
+    public var account: String?
+
+    public init(title: String, color: String? = nil, kind: Kind, account: String? = nil) {
+        self.title = title
+        self.color = color
+        self.kind = kind
+        self.account = account
+    }
+
+    enum CodingKeys: String, CodingKey { case title, color, kind, account }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(title, forKey: .title)
+        try c.encode(color, forKey: .color)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(account, forKey: .account)
+    }
+}
+
 /// What a store can see for the snapshot. `nil` = that kind is unreadable right now.
 public struct SnapshotParts: Equatable, Sendable {
     public var events: [SnapshotEvent]?
     public var reminders: [SnapshotReminder]?
+    public var calendars: [SnapshotCalendar]?
 
-    public init(events: [SnapshotEvent]? = nil, reminders: [SnapshotReminder]? = nil) {
+    public init(events: [SnapshotEvent]? = nil, reminders: [SnapshotReminder]? = nil,
+                calendars: [SnapshotCalendar]? = nil) {
         self.events = events
         self.reminders = reminders
+        self.calendars = calendars
     }
 
-    public var isEmpty: Bool { events == nil && reminders == nil }
+    public var isEmpty: Bool { events == nil && reminders == nil && calendars == nil }
 }
 
 /// POST /api/agent/snapshot body. Unreadable kinds are explicit nulls.
 public struct CalendarSnapshot: Encodable, Equatable, Sendable {
     public static let maxItems = 400
+    /// Open reminders with no due date (sent so the brain can skip duplicates, "milk" is on Groceries).
+    public static let maxUndated = 300
+    public static let maxCalendars = 100
     public static let defaultRangeDays = 7
+    /// Events are sent from this many days back, so the app's week strip has the past days too.
+    public static let pastDays = 7
 
     public var generatedAt: String
     public var rangeDays: Int
     public var events: [SnapshotEvent]?
     public var reminders: [SnapshotReminder]?
+    public var calendars: [SnapshotCalendar]?
 
-    /// Sorts each kind (events by start, reminders by due date/time) and caps it at `maxItems`.
+    /// Sorts each kind (events by start, reminders by due date/time) and caps it at `maxItems`
+    /// (undated reminders separately, at `maxUndated`).
     public init(parts: SnapshotParts, generatedAt: String, rangeDays: Int = defaultRangeDays) {
         self.generatedAt = generatedAt
         self.rangeDays = rangeDays
@@ -116,15 +153,20 @@ public struct CalendarSnapshot: Encodable, Equatable, Sendable {
             Array(list.sorted { ($0.start, $0.id) < ($1.start, $1.id) }.prefix(Self.maxItems))
         }
         self.reminders = parts.reminders.map { list in
-            Array(list.sorted { ($0.due ?? "", $0.dueTime ?? "", $0.id) < ($1.due ?? "", $1.dueTime ?? "", $1.id) }
-                .prefix(Self.maxItems))
+            let dated = list.filter { $0.due != nil }
+                .sorted { ($0.due ?? "", $0.dueTime ?? "", $0.id) < ($1.due ?? "", $1.dueTime ?? "", $1.id) }
+            let undated = list.filter { $0.due == nil }.sorted { ($0.list, $0.title, $0.id) < ($1.list, $1.title, $1.id) }
+            return Array(dated.prefix(Self.maxItems)) + Array(undated.prefix(Self.maxUndated))
+        }
+        self.calendars = parts.calendars.map { list in
+            Array(list.sorted { ($0.kind.rawValue, $0.title) < ($1.kind.rawValue, $1.title) }.prefix(Self.maxCalendars))
         }
     }
 
     /// Whether `notes` carry a Second Brain tag (item created by the agent).
     public static func isOurs(notes: String?) -> Bool { (notes ?? "").contains("[ha:") }
 
-    enum CodingKeys: String, CodingKey { case generatedAt, rangeDays, events, reminders }
+    enum CodingKeys: String, CodingKey { case generatedAt, rangeDays, events, reminders, calendars }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -132,6 +174,7 @@ public struct CalendarSnapshot: Encodable, Equatable, Sendable {
         try c.encode(rangeDays, forKey: .rangeDays)
         try c.encode(events, forKey: .events)        // explicit null = "keep what you had"
         try c.encode(reminders, forKey: .reminders)
+        try c.encode(calendars, forKey: .calendars)
     }
 }
 

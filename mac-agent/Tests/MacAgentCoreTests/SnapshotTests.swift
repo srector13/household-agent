@@ -54,6 +54,33 @@ final class SnapshotTests: XCTestCase {
         XCTAssertEqual(HexColor.from(red: 1, green: 0.5, blue: 0), "#FF8000")
     }
 
+    func testCalendarsCatalogAndUndatedReminders() throws {
+        let dated = (0..<5).map { i in SnapshotReminder(id: "D\(i)", title: "Dated \(i)", list: "Household", due: "2026-11-2\(i)") }
+        let undated = (0..<350).map { i in SnapshotReminder(id: "U\(i)", title: "Item \(i)", list: "Groceries") }
+        let cals = [SnapshotCalendar(title: "Work", color: "#34C759", kind: .event, account: "Exchange"),
+                    SnapshotCalendar(title: "Groceries", kind: .reminder),
+                    SnapshotCalendar(title: "Family", color: "#FF9500", kind: .event, account: "iCloud")]
+        let snap = CalendarSnapshot(parts: SnapshotParts(events: [], reminders: undated + dated, calendars: cals),
+                                    generatedAt: "g")
+        XCTAssertEqual(snap.reminders?.count, 5 + CalendarSnapshot.maxUndated, "undated capped separately")
+        XCTAssertEqual(snap.reminders?.first?.id, "D0", "dated first, by due")
+        XCTAssertEqual(snap.calendars?.map(\.title), ["Family", "Work", "Groceries"])
+        let obj = try json(try Wire.encoder().encode(snap))
+        let rows = try XCTUnwrap(obj["calendars"] as? [[String: Any]])
+        XCTAssertEqual(rows.first?["kind"] as? String, "event")
+        XCTAssertEqual(rows.first?["account"] as? String, "iCloud")
+        XCTAssertTrue(rows.last?["color"] is NSNull)
+        let last = try XCTUnwrap((obj["reminders"] as? [[String: Any]])?.last)
+        XCTAssertTrue(last["due"] is NSNull)
+    }
+
+    func testUnreadableCatalogIsExplicitNull() throws {
+        let snap = CalendarSnapshot(parts: SnapshotParts(events: [], reminders: []), generatedAt: "g")
+        let obj = try json(try Wire.encoder().encode(snap))
+        XCTAssertTrue(obj["calendars"] is NSNull)
+        XCTAssertFalse(SnapshotParts(calendars: []).isEmpty)
+    }
+
     func testPostedAfterCompletionSync() async throws {
         let server = try StubBrainServer { _, path, _ in
             if path.hasPrefix("/api/agent/tracked") { return (200, #"{"interval_s": 300, "items": []}"#) }

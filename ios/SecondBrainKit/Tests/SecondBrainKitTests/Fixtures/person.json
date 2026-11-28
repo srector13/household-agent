@@ -7,7 +7,7 @@
     "photo": "/avatars/3ef3ee7232dc6a96.jpg?v=abc",
     "contact_name": "Sarah Smith",
     "mentioned": false,
-    "last": "2026-11-21T21:14:05.712017-06:00",
+    "last": "2026-11-27T22:47:55.466897-06:00",
     "promises": 0,
     "waiting": 0,
     "gifts": 1,
@@ -18,7 +18,7 @@
   "waiting": [],
   "todos": [
     {
-      "id": "itm_001a2013f26ebebf0b31f",
+      "id": "itm_001a2207b36313b973cdc",
       "title": "Send Wife the photos",
       "kind": "reminder",
       "category": "todo",
@@ -26,7 +26,7 @@
       "collection_label": null,
       "person": "Wife",
       "status": "active",
-      "due": "2026-11-22",
+      "due": "2026-11-28",
       "due_time": null,
       "start": null,
       "end": null,
@@ -40,14 +40,14 @@
       "url": null,
       "first_step": null,
       "steps": [],
-      "notes": "👤 Wife · Sat Nov 21\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1#1]",
+      "notes": "👤 Wife · Fri Nov 27\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1#1]",
       "origin_event_id": "imessage:1",
-      "created_at": "2026-11-22T03:14:05.675+00:00",
-      "updated_at": "2026-11-22T03:14:05.704+00:00",
+      "created_at": "2026-11-28T04:47:55.441+00:00",
+      "updated_at": "2026-11-28T04:47:55.461+00:00",
       "completed_at": null
     },
     {
-      "id": "itm_001a2013f26ea8835a73a",
+      "id": "itm_001a2207b3630556a0b9f",
       "title": "Call the plumber",
       "kind": "reminder",
       "category": "todo",
@@ -55,7 +55,7 @@
       "collection_label": null,
       "person": "Wife",
       "status": "active",
-      "due": "2026-11-21",
+      "due": "2026-11-27",
       "due_time": "15:00",
       "start": null,
       "end": null,
@@ -69,16 +69,16 @@
       "url": null,
       "first_step": null,
       "steps": [],
-      "notes": "👤 Wife · Sat Nov 21\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1]",
+      "notes": "👤 Wife · Fri Nov 27\nWife: “call the plumber at 3 today, and send me the photos”\n[ha:imessage:1]",
       "origin_event_id": "imessage:1",
-      "created_at": "2026-11-22T03:14:05.674+00:00",
-      "updated_at": "2026-11-22T03:14:05.698+00:00",
+      "created_at": "2026-11-28T04:47:55.440+00:00",
+      "updated_at": "2026-11-28T04:47:55.457+00:00",
       "completed_at": null
     }
   ],
   "gifts": [
     {
-      "id": "itm_001a2013f26f50966b105",
+      "id": "itm_001a2207b3638e7bac97a",
       "title": "Kindle",
       "kind": "reminder",
       "category": "collection",
@@ -100,10 +100,10 @@
       "url": "https://example.com/k",
       "first_step": null,
       "steps": [],
-      "notes": "👤 Wife · Sat Nov 21\nWife: “I'd love a kindle”\nhttps://example.com/k\n[ha:imessage:2]",
+      "notes": "👤 Wife · Fri Nov 27\nWife: “I'd love a kindle”\nhttps://example.com/k\n[ha:imessage:2]",
       "origin_event_id": "imessage:2",
-      "created_at": "2026-11-22T03:14:05.685+00:00",
-      "updated_at": "2026-11-22T03:14:05.709+00:00",
+      "created_at": "2026-11-28T04:47:55.448+00:00",
+      "updated_at": "2026-11-28T04:47:55.465+00:00",
       "completed_at": null
     }
   ],
@@ -115,21 +115,21 @@
       "event_id": "imessage:1",
       "text": "call the plumber at 3 today, and send me the photos",
       "from_me": false,
-      "at": "2026-11-21T21:14:05.666981-06:00",
+      "at": "2026-11-27T22:47:55.433535-06:00",
       "status": "done"
     },
     {
       "event_id": "imessage:2",
       "text": "I'd love a kindle",
       "from_me": false,
-      "at": "2026-11-21T21:14:05.678184-06:00",
+      "at": "2026-11-27T22:47:55.443535-06:00",
       "status": "done"
     },
     {
       "event_id": "imessage:3",
       "text": "we should paint the fence sometime",
       "from_me": false,
-      "at": "2026-11-21T21:14:05.712017-06:00",
+      "at": "2026-11-27T22:47:55.466897-06:00",
       "status": "needs_review"
     }
   ]
