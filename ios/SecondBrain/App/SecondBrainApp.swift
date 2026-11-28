@@ -74,27 +74,22 @@ struct MainTabs: View {
     var body: some View {
         @Bindable var app = app
         TabView(selection: $app.tab) {
-            Tab("Home", systemImage: "house", value: AppTab.home) {
+            Tab("Today", systemImage: "calendar.day.timeline.left", value: AppTab.home) {
                 NavigationStack(path: app.path(.home)) {
-                    HomeView().withRoutes()
+                    TimelineHome().withRoutes()
                 }
             }
+            .badge(app.info?.reviewCount ?? 0)
             Tab("People", systemImage: "person.2", value: AppTab.people) {
                 NavigationStack(path: app.path(.people)) {
                     PeopleView().withRoutes()
                 }
             }
-            Tab("Lists", systemImage: "checklist", value: AppTab.lists) {
+            Tab("Lists", systemImage: "square.grid.2x2", value: AppTab.lists) {
                 NavigationStack(path: app.path(.lists)) {
                     ListsView().withRoutes()
                 }
             }
-            Tab("Review", systemImage: "checkmark.circle", value: AppTab.review) {
-                NavigationStack(path: app.path(.review)) {
-                    ReviewView().withRoutes()
-                }
-            }
-            .badge(app.info?.reviewCount ?? 0)
             Tab("More", systemImage: "ellipsis", value: AppTab.more) {
                 NavigationStack(path: app.path(.more)) {
                     MoreView().withRoutes()
@@ -104,6 +99,10 @@ struct MainTabs: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
             CaptureBar()
+        }
+        .sheet(isPresented: $app.showReview, onDismiss: { app.changed() }) {
+            ReviewSheet()
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $app.showCapture) {
             CaptureSheet()
@@ -133,6 +132,7 @@ extension View {
             case .status: StatusView()
             case .settings: SettingsView()
             case .server: ServerView()
+            case .list(let key): ListDetailView(key: key)
             }
         }
     }

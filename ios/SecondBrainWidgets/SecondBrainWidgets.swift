@@ -5,6 +5,7 @@ import WidgetKit
 @main
 struct SecondBrainWidgets: WidgetBundle {
     var body: some Widget {
+        TodayWidget()
         CaptureControl()
         CaptureLockWidget()
     }

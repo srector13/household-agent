@@ -3,9 +3,10 @@ import Security
 import Observation
 import SecondBrainKit
 import SwiftUI
+import WidgetKit
 
 enum AppTab: String, Hashable, CaseIterable {
-    case home, people, lists, review, more
+    case home, people, lists, more
 }
 
 /// Screens pushed onto a tab's navigation stack.
@@ -18,6 +19,7 @@ enum Route: Hashable {
     case status
     case settings
     case server
+    case list(String)
 }
 
 struct Toast: Identifiable, Equatable {
@@ -44,6 +46,8 @@ final class AppModel {
     var paths: [AppTab: [Route]] = [:]
     var focusItem: String?
     var showCapture = false
+    /// The review sheet over Today (from the banner or a "Check this" notification).
+    var showReview = false
     /// The next capture sheet opens listening (from the Control Center / Lock Screen control).
     var captureDictate = false
 
@@ -121,6 +125,7 @@ final class AppModel {
     /// Something changed (an action, a notification, the live stream): reload what's on screen.
     func changed() {
         tick += 1
+        WidgetCenter.shared.reloadAllTimelines()
         Task { await refreshInfo() }
     }
 
@@ -215,7 +220,7 @@ final class AppModel {
         }
         func push(_ t: AppTab, _ route: Route) { tab = t; paths[t] = [route] }
         if path == "/" || path.isEmpty { tab = .home; paths[.home] = [] }
-        else if path.hasPrefix("/review") { tab = .review; paths[.review] = [] }
+        else if path.hasPrefix("/review") { tab = .home; paths[.home] = []; showReview = true }
         else if path.hasPrefix("/items") { tab = .lists; paths[.lists] = [] }
         else if path.hasPrefix("/people/") { push(.people, .person(String(path.dropFirst("/people/".count)))) }
         else if path.hasPrefix("/people") { tab = .people; paths[.people] = [] }

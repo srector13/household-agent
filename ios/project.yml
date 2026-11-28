@@ -32,7 +32,7 @@ targets:
         PRODUCT_NAME: SecondBrain
         TARGETED_DEVICE_FAMILY: "1"                         # iPhone
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: AppIcon-Light   # More → App Icon
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-CaughtLight AppIcon-Minds AppIcon-MindsLight AppIcon-Loop AppIcon-LoopLight AppIcon-Orbit AppIcon-OrbitLight"   # More → App Icon
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: ""                                # your Apple Developer team ID, for Xcode runs
@@ -68,14 +68,16 @@ targets:
         NSMicrophoneUsageDescription: Second Brain listens while you talk a thought into the capture sheet.
         NSSpeechRecognitionUsageDescription: Second Brain turns what you say into text for the capture sheet.
 
-  # Control Center control ("Capture a thought") and a Lock Screen widget. No App Group, so Feather
-  # can re-sign it with any certificate.
+  # Control Center control ("Capture a thought"), a Lock Screen widget and the Today widget. No App
+  # Group, so Feather can re-sign it with any certificate (the Today widget gets a connection code).
   SecondBrainWidgets:
     type: app-extension
     platform: iOS
     sources:
       - SecondBrainWidgets
       - SecondBrain/Shared
+    dependencies:
+      - package: SecondBrainKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: PolarReality.SecondBrain.Widgets

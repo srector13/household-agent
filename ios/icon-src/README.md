@@ -1,11 +1,25 @@
 # App icon sources
 
-Black, like Apple's own dark icons, with the accent (blue into teal) in the logo, not the background.
+Four abstract marks, each on a black tile and on a white tile — eight icons you pick from in
+More → App Icon. The accent (blue into teal) lives only in the mark, never the tile. No purple,
+on purpose (hue 232–335 is banned by CI).
 
-- `icon.svg` — the default icon (black), also used for Dark Home Screens → `AppIcon`
-- `icon-light.svg` — the white alternative (More → App Icon → Light) → `AppIcon-Light`
-- `icon-tinted.svg` — grayscale glyph on transparent for Tinted Home Screens (iOS colors it)
+| Mark | Black | White |
+| --- | --- | --- |
+| Caught thought — an open circle holding one dot | `AppIcon` (default) | `AppIcon-CaughtLight` |
+| Two minds — two overlapping rings | `AppIcon-Minds` | `AppIcon-MindsLight` |
+| Loop — one line winding inward to a point | `AppIcon-Loop` | `AppIcon-LoopLight` |
+| Orbit — a dot circling a ring | `AppIcon-Orbit` | `AppIcon-OrbitLight` |
 
-Rendered at 1024×1024 into `SecondBrain/Assets.xcassets` (plus 240 px previews in `IconDark` /
-`IconLight` for the picker). Open an SVG in a browser at 1024 px and save, or use any SVG renderer.
-No purple, on purpose.
+Every icon set has a tinted variant (light glyph on transparent; iOS colors it for Tinted Home
+Screens). Black sets also carry the same art as their dark variant. Each icon has a 240 px
+`IconPreview-*` image for the picker.
+
+Render everything (SVG sources here, PNGs into `SecondBrain/Assets.xcassets`):
+
+    node ios/icon-src/render.js
+
+It uses the Chromium that ships with Playwright. The mark geometry lives in `render.js` (100×100
+box); the `*-black.svg`, `*-white.svg` and `*-tinted.svg` files are its output, kept for reference.
+The list of alternates in `project.yml` (`ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES`) and in
+`SecondBrain/Design/AppIcons.swift` must match the asset names above.

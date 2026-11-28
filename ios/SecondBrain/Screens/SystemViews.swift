@@ -7,6 +7,7 @@ import UserNotifications
 struct MoreView: View {
     @Environment(AppModel.self) private var app
     @AppStorage("appearance") private var appearance = "system"
+    @State private var showSources = false
 
     var body: some View {
         List {
@@ -14,6 +15,15 @@ struct MoreView: View {
                 link(.activity(status: nil), "Activity", "list.bullet.rectangle", .cyan)
                 link(.today, "Plan my days", "sun.max.fill", .yellow)
                 link(.weekly, "Weekly reset", "sparkles", .green)
+            }
+            Section {
+                Button { showSources = true } label: {
+                    Label { Text("Calendars & lists").foregroundStyle(.primary) } icon: { IconTile(symbol: "calendar", color: .red, size: 29) }
+                }
+                .accessibilityIdentifier("more-sources")
+                NavigationLink { WidgetSetupView() } label: {
+                    Label { Text("Today widget") } icon: { IconTile(symbol: "square.text.square.fill", color: .blue, size: 29) }
+                }
             }
             Section {
                 link(.status, "Status", "server.rack", .gray)
@@ -36,7 +46,7 @@ struct MoreView: View {
             } header: {
                 Text("App Icon")
             } footer: {
-                Text("Dark is the default. Tinted Home Screens get a version iOS colors for you.")
+                Text("Four marks, each on black or white. Tinted Home Screens get a version iOS colors for you.")
             }
             if let i = app.info {
                 Section {
@@ -50,12 +60,52 @@ struct MoreView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("More")
+        .sheet(isPresented: $showSources) { SourcesSheet() }
     }
 
     private func link(_ r: Route, _ title: String, _ symbol: String, _ color: Color) -> some View {
         NavigationLink(value: r) {
             Label { Text(title) } icon: { IconTile(symbol: symbol, color: color, size: 29) }
         }
+    }
+}
+
+// MARK: - Today widget setup
+
+/// The widget can't see the app's settings, so it gets the connection as a code you paste once.
+struct WidgetSetupView: View {
+    @Environment(AppModel.self) private var app
+    @State private var copied = false
+
+    var body: some View {
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Today on your Home Screen").font(.title3.bold())
+                    Text("Your next events and reminders, with circles you can tick right from the widget.")
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+            Section {
+                Button {
+                    if let cfg = app.config { UIPasteboard.general.string = WidgetConnection.code(for: cfg); copied = true }
+                } label: {
+                    Label(copied ? "Copied" : "Copy Connection Code", systemImage: copied ? "checkmark" : "doc.on.doc")
+                }
+                .disabled(app.config == nil)
+            } footer: {
+                Text("The code holds your brain's address and password. Paste it only into this widget.")
+            }
+            Section("How to Add It") {
+                Label("Touch and hold the Home Screen, tap Edit, then Add Widget.", systemImage: "1.circle")
+                Label("Pick Second Brain → Today, in any size.", systemImage: "2.circle")
+                Label("Touch and hold the widget, tap Edit Widget, and paste the code.", systemImage: "3.circle")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Today Widget")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -333,49 +383,4 @@ struct ServerView: View {
     }
 
     private func refreshPermission() async { permission = await Notifier.shared.status() }
-}
-
-/// Choose between the black (default) and white app icons.
-struct AppIconPicker: View {
-    @State private var current = UIApplication.shared.alternateIconName
-
-    var body: some View {
-        HStack(spacing: 28) {
-            option(nil, "Dark", "IconDark")
-            option("AppIcon-Light", "Light", "IconLight")
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 6)
-    }
-
-    private func option(_ name: String?, _ label: String, _ image: String) -> some View {
-        let selected = current == name
-        return Button {
-            Task { @MainActor in
-                guard UIApplication.shared.supportsAlternateIcons, current != name else { return }
-                do {
-                    try await UIApplication.shared.setAlternateIconName(name)
-                    current = name
-                } catch {}
-            }
-        } label: {
-            VStack(spacing: 8) {
-                Image(image)
-                    .resizable()
-                    .frame(width: 64, height: 64)
-                    .clipShape(.rect(cornerRadius: 15, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
-                    .padding(3)
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(selected ? Color.accentColor : Color.clear, lineWidth: 2.5))
-                Text(label).font(.subheadline)
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(label) icon")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
 }

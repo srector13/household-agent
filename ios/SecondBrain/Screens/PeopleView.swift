@@ -2,71 +2,251 @@ import SecondBrainKit
 import SwiftUI
 
 struct PeopleView: View {
+    @Environment(AppModel.self) private var app
+    @State private var picked: PickedContact?
+
     var body: some View {
-        Loader({ try await $0.people() }) { people in
-            let watched = people.filter { !$0.mentioned }
-            let mentioned = people.filter(\.mentioned)
-            List {
-                if people.isEmpty {
-                    ContentUnavailableView("No one yet", systemImage: "person.2",
-                                           description: Text("Add people to watch in Settings → People & Chats."))
-                }
-                if !watched.isEmpty {
-                    Section {
-                        ForEach(watched) { p in PersonRow(p: p) }
-                    }
-                }
-                if !mentioned.isEmpty {
-                    Section {
-                        ForEach(mentioned) { p in PersonRow(p: p) }
-                    } header: {
-                        HeaderRow("Also Mentioned")
-                    }
-                    .headerProminence(.increased)
-                }
-            }
-            .listStyle(.insetGrouped)
+        Loader({ api -> PeopleAndItems in
+            async let people = api.people()
+            async let page = api.items(tab: "todos")
+            return PeopleAndItems(people: try await people, items: try await page.items)
+        }) { d in
+            PeopleGrid(people: d.people, items: d.items)
         }
         .navigationTitle("People")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { ContactPicker.present { picked = $0 } } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Add someone from Contacts")
+                    .accessibilityIdentifier("add-person")
+            }
+        }
+        .sheet(item: $picked) { c in AddPersonSheet(contact: c) }
     }
 }
 
-private struct PersonRow: View {
+private struct PeopleAndItems {
+    var people: [Person]
+    var items: [Item]
+}
+
+/// Faces first, like a Contacts favorites row, then what's open between you and them.
+private struct PeopleGrid: View {
+    let people: [Person]
+    let items: [Item]
+
+    private let columns = [GridItem(.adaptive(minimum: 78, maximum: 110), spacing: 8)]
+
+    var body: some View {
+        let watched = people.filter { !$0.mentioned }
+        let mentioned = people.filter(\.mentioned)
+        let between = items.filter { ($0.category == "promise" || $0.category == "waiting") && $0.person != nil }
+        List {
+            if people.isEmpty {
+                ContentUnavailableView {
+                    Label("No one yet", systemImage: "person.2")
+                } description: {
+                    Text("Tap + to pick someone from Contacts. Second Brain starts reading your texts with them right away.")
+                }
+            }
+            if !watched.isEmpty {
+                Section {
+                    LazyVGrid(columns: columns, alignment: .center, spacing: 16) {
+                        ForEach(watched) { p in Face(p: p) }
+                    }
+                    .padding(.vertical, 8)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
+                }
+            }
+            if !between.isEmpty {
+                Section {
+                    ForEach(between) { it in ReminderRow(item: it, showPerson: true) }
+                } header: {
+                    HeaderRow("Between You")
+                }
+                .headerProminence(.increased)
+            }
+            if !mentioned.isEmpty {
+                Section {
+                    ForEach(mentioned) { p in
+                        NavigationLink(value: Route.person(p.key)) {
+                            HStack(spacing: 12) {
+                                AvatarView(name: p.label, photo: p.photo, size: 34)
+                                Text(p.label)
+                            }
+                        }
+                    }
+                } header: {
+                    HeaderRow("Also Mentioned")
+                }
+                .headerProminence(.increased)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .accessibilityIdentifier("people-grid")
+    }
+}
+
+private struct Face: View {
     let p: Person
 
     var body: some View {
+        let open = p.promises + p.waiting + p.todos
         NavigationLink(value: Route.person(p.key)) {
-            HStack(spacing: 12) {
-                AvatarView(name: p.label, photo: p.photo, size: 44, symbol: p.group ? "person.3.fill" : nil)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(p.label).font(.body.weight(.semibold))
-                    Text(summary).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                }
+            VStack(spacing: 6) {
+                AvatarView(name: p.label, photo: p.photo, size: 64, symbol: p.group ? "person.3.fill" : nil)
+                    .overlay(alignment: .topTrailing) {
+                        if open > 0 {
+                            Text("\(open)").font(.caption2.weight(.bold)).foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color.accentColor, in: .capsule)
+                                .overlay(Capsule().stroke(Color(.systemGroupedBackground), lineWidth: 2))
+                                .offset(x: 4, y: -2)
+                        }
+                    }
+                Text(p.label).font(.footnote.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
             }
-            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity)
         }
-    }
-
-    private var summary: String {
-        var parts: [String] = []
-        if p.promises > 0 { parts.append("\(p.promises) promise\(p.promises == 1 ? "" : "s")") }
-        if p.waiting > 0 { parts.append("waiting on \(p.waiting)") }
-        if p.todos > 0 { parts.append("\(p.todos) to-do\(p.todos == 1 ? "" : "s")") }
-        if p.gifts > 0 { parts.append("\(p.gifts) gift idea\(p.gifts == 1 ? "" : "s")") }
-        if parts.isEmpty, let last = p.last { return "Last message \(BrainDate.ago(last))" }
-        if parts.isEmpty { return p.mentioned ? "Mentioned in your messages" : "Nothing open" }
-        return parts.joined(separator: " · ")
+        .buttonStyle(.plain)
+        .accessibilityLabel(p.label + (open > 0 ? ", \(open) open" : ""))
     }
 }
 
 struct PersonView: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
     let key: String
+    @State private var confirmStop = false
 
     var body: some View {
         Loader({ try await $0.person(key) }) { d in
             PersonDetailList(d: d)
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if key.hasPrefix("h-") || key.hasPrefix("c-") {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Stop Watching Texts", systemImage: "eye.slash", role: .destructive) { confirmStop = true }
+                    } label: { Image(systemName: "ellipsis") }
+                }
+            }
+        }
+        .confirmationDialog("Stop reading texts from them?", isPresented: $confirmStop, titleVisibility: .visible) {
+            Button("Stop Watching", role: .destructive) {
+                Task {
+                    if await app.run("Stopped watching", { try await $0.removePerson(key) }) { dismiss() }
+                }
+            }
+        } message: {
+            Text("What's already saved stays. New messages from them won't be read.")
+        }
+    }
+}
+
+// MARK: - Add from Contacts
+
+/// What we need from a contact the user picked.
+struct PickedContact: Identifiable {
+    let id = UUID()
+    var name: String
+    var nickname: String?
+    var phones: [Handle]
+    var emails: [Handle]
+    var photo: Data?
+
+    struct Handle: Hashable {
+        var label: String
+        var value: String
+    }
+
+    var handles: [Handle] { phones + emails }
+    var short: String { nickname?.nonEmpty ?? name.split(separator: " ").first.map(String.init) ?? name }
+}
+
+struct AddPersonSheet: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    let contact: PickedContact
+    @State private var label = ""
+    @State private var handle = ""
+    @State private var isMe = false
+    @State private var busy = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    VStack(spacing: 6) {
+                        Group {
+                            if let d = contact.photo, let img = UIImage(data: d) {
+                                Image(uiImage: img).resizable().scaledToFill()
+                            } else {
+                                AvatarView(name: contact.name, size: 96)
+                            }
+                        }
+                        .frame(width: 96, height: 96).clipShape(Circle())
+                        Text(contact.name).font(.title2.bold())
+                        Label(contact.photo == nil ? "From Contacts" : "From Contacts · photo included", systemImage: "person.crop.circle")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                }
+                Section("Show As") {
+                    TextField("Name", text: $label).textInputAutocapitalization(.words)
+                }
+                Section {
+                    if contact.handles.isEmpty {
+                        Text("This contact has no phone number or email.").foregroundStyle(.secondary)
+                    }
+                    Picker("Watch texts from", selection: $handle) {
+                        ForEach(contact.handles, id: \.value) { h in
+                            VStack(alignment: .leading) {
+                                Text(h.value)
+                                Text(h.label).font(.footnote).foregroundStyle(.secondary)
+                            }
+                            .tag(h.value)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("Watch Texts From")
+                }
+                Section {
+                    Toggle("This is me", isOn: $isMe)
+                } footer: {
+                    Text("Turn on for notes you text yourself. Only the conversations you add are read, starting now.")
+                }
+            }
+            .navigationTitle("Add Someone")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") { Task { await add() } }
+                        .disabled(busy || handle.isEmpty || label.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .accessibilityIdentifier("add-person-confirm")
+                }
+            }
+        }
+        .onAppear {
+            label = contact.short
+            handle = contact.phones.first?.value ?? contact.emails.first?.value ?? ""
+        }
+    }
+
+    private func add() async {
+        busy = true
+        let (name, l, h, photo, me) = (contact.name, label.trimmingCharacters(in: .whitespaces), handle, contact.photo, isMe)
+        let ok = await app.run("Watching texts from \(l)") {
+            _ = try await $0.addPerson(name: name, label: l, handle: h, photo: photo, isMe: me)
+        }
+        busy = false
+        if ok { dismiss() }
     }
 }
 

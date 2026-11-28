@@ -20,30 +20,70 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Connect to your brain"].waitForExistence(timeout: 30))
         shot("01-connect")
 
-        // 2. Connected: Home.
+        // 2. Connected: Today (the timeline).
         app.terminate()
         app.launchArguments = ["-SecondBrainReset", "-SecondBrainServer", server, "-SecondBrainScreenshots"]
         app.launch()
         dismissAlerts(app)
-        XCTAssertTrue(app.staticTexts["Today"].waitForExistence(timeout: 30), "Home didn't load")
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 30), "Today didn't load")
+        _ = app.scrollViews["timeline"].waitForExistence(timeout: 20)
         sleep(2)
-        shot("02-home")
+        shot("02-today")
         app.swipeUp()
         sleep(1)
-        shot("03-home-scrolled")
+        shot("03-today-scrolled")
         app.swipeDown(); app.swipeDown()
+        sleep(1)
 
-        // 3. Focus mode from today's first pick.
-        if tap(app.buttons["focus-first"]) {
-            XCTAssertTrue(app.staticTexts["focus-title"].waitForExistence(timeout: 15))
+        // 2b. The review banner opens a sheet over Today.
+        if tap(app.buttons["review-banner"]) {
+            sleep(2)
+            shot("14-review-sheet")
+            if app.buttons["Close"].exists { app.buttons["Close"].tap() } else { app.swipeDown() }
             sleep(1)
-            shot("04-focus")
-            if tap(app.buttons["focus-start"]) { sleep(2); shot("05-focus-timer") }
-            if tap(app.buttons["focus-done"]) { sleep(1); shot("06-focus-done") }
-            if app.buttons["Take a break"].exists { app.buttons["Take a break"].tap() }
-            else if app.buttons["Back to my day"].exists { app.buttons["Back to my day"].tap() }
-            else if app.buttons["Close"].exists { app.buttons["Close"].tap() }
+        }
+
+        // 2c. Which calendars and lists show on Today.
+        if tap(app.buttons["sources-button"]) {
+            sleep(2)
+            shot("29-sources")
+            if !tap(app.buttons["sources-done"]) { app.swipeDown() }
             sleep(1)
+        }
+
+        // 2d. The week strip: tomorrow.
+        let days = app.scrollViews["timeline"].buttons.matching(NSPredicate(format: "label CONTAINS ','"))
+        if days.count >= 7 {
+            let todayIndex = (0..<days.count).first { days.element(boundBy: $0).isSelected } ?? 6
+            if todayIndex < 6 {
+                days.element(boundBy: todayIndex + 1).tap()
+                sleep(2)
+                shot("30-tomorrow")
+                if app.navigationBars.buttons["Today"].exists { app.navigationBars.buttons["Today"].tap(); sleep(2) }
+            }
+        }
+
+        // 3. Focus mode: tap a reminder's title → Focus on This.
+        let ticks = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tick-'"))
+        if ticks.firstMatch.waitForExistence(timeout: 5) {
+            let title = String(ticks.firstMatch.identifier.dropFirst(5))
+            if tap(app.staticTexts[title].firstMatch) {
+                sleep(1)
+                shot("31-reminder-actions")
+                if tap(app.buttons["Focus on This"]) {
+                    XCTAssertTrue(app.staticTexts["focus-title"].waitForExistence(timeout: 15))
+                    sleep(1)
+                    shot("04-focus")
+                    if tap(app.buttons["focus-start"]) { sleep(2); shot("05-focus-timer") }
+                    if tap(app.buttons["focus-done"]) { sleep(1); shot("06-focus-done") }
+                    if app.buttons["Take a break"].exists { app.buttons["Take a break"].tap() }
+                    else if app.buttons["Back to my day"].exists { app.buttons["Back to my day"].tap() }
+                    else if app.buttons["Close"].exists { app.buttons["Close"].tap() }
+                    sleep(1)
+                } else if app.buttons["Cancel"].exists {
+                    app.buttons["Cancel"].tap()
+                }
+            }
         }
 
         // 4. Capture.
@@ -64,42 +104,64 @@ final class ScreenshotTests: XCTestCase {
         if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
         sleep(1)
 
-        // 5. People.
+        // 5. People: faces, a person, and adding someone from Contacts.
         tab(app, "People")
         sleep(2)
         shot("08-people")
-        if tap(app.staticTexts["Sarah"].firstMatch) {
+        if tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Sarah'")).firstMatch) {
             sleep(2)
             shot("09-person")
             app.swipeUp()
             shot("10-person-scrolled")
+            back(app)
+            sleep(1)
+        }
+        if tap(app.buttons["add-person"]) {
+            sleep(3)
+            shot("32-contacts-picker")
+            // The simulator ships sample contacts (Kate Bell, John Appleseed …).
+            let kate = app.staticTexts["Kate Bell"].firstMatch
+            if kate.waitForExistence(timeout: 5) {
+                kate.tap()
+                sleep(2)
+                shot("33-add-person")
+                if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
+            } else if app.buttons["Cancel"].exists {
+                app.buttons["Cancel"].tap()
+            }
+            sleep(1)
         }
 
-        // 6. Lists + swipe actions.
+        // 6. Lists: tiles, a list (with swipe actions), a collection.
         tab(app, "Lists")
         sleep(2)
         shot("11-lists")
-        let cell = app.staticTexts["Do our taxes"].firstMatch
-        if cell.waitForExistence(timeout: 5) {
-            cell.swipeLeft()
+        if tap(app.buttons["tile-scheduled"]) {
+            sleep(2)
+            shot("12-list-scheduled")
+            let cell = app.staticTexts["Do our taxes"].firstMatch
+            if cell.waitForExistence(timeout: 3) {
+                cell.swipeLeft()
+                sleep(1)
+                shot("12b-list-swipe")
+                app.tap()
+            }
+            back(app)
             sleep(1)
-            shot("12-lists-swipe")
-            app.tap()
         }
-        if tap(app.segmentedControls.buttons["Collections"].firstMatch) || tap(app.buttons["Collections"].firstMatch) {
-            sleep(2); shot("13-collections")
+        if tap(app.collectionViews.cells.element(boundBy: 1)) {
+            sleep(2)
+            shot("13-collection")
+            back(app)
+            sleep(1)
         }
-
-        // 7. Review.
-        tab(app, "Review")
-        sleep(2)
-        shot("14-review")
 
         // 8. More → everything else.
         tab(app, "More")
         sleep(1)
         shot("15-more")
         for (label, name) in [("Activity", "16-activity"), ("Plan my days", "18-today"), ("Weekly reset", "19-weekly"),
+                              ("Today widget", "34-widget-setup"),
                               ("Status", "20-status"), ("Settings", "21-settings"), ("Server & notifications", "23-server")] {
             guard tap(app.staticTexts[label].firstMatch) else { continue }
             sleep(2)
@@ -122,9 +184,12 @@ final class ScreenshotTests: XCTestCase {
         app.terminate()
         app.launchArguments = ["-SecondBrainServer", server, "-SecondBrainScreenshots", "-SecondBrainDark"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["Today"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 30))
+        sleep(3)
+        shot("24-today-dark")
+        tab(app, "People")
         sleep(2)
-        shot("24-home-dark")
+        shot("24b-people-dark")
         tab(app, "Lists")
         sleep(2)
         shot("25-lists-dark")
