@@ -1,7 +1,7 @@
 {
   "date": "2026-11-27",
   "today": "2026-11-27",
-  "now": "2026-11-27T22:47:55.970578-06:00",
+  "now": "2026-11-27T22:48:10.047988-06:00",
   "week": [
     {
       "date": "2026-11-22",
@@ -25,7 +25,7 @@
     },
     {
       "date": "2026-11-27",
-      "count": 0
+      "count": 2
     },
     {
       "date": "2026-11-28",
@@ -36,10 +36,35 @@
   "all_day": [],
   "entries": [
     {
+      "id": "apple:E-early",
+      "kind": "event",
+      "title": "Early swim",
+      "at": "2026-11-27T00:00:00-06:00",
+      "start": "2026-11-27T00:00:00-06:00",
+      "end": "2026-11-27T00:01:00-06:00",
+      "due": null,
+      "due_time": null,
+      "all_day": false,
+      "done": false,
+      "late": false,
+      "carried": false,
+      "past": true,
+      "ours": false,
+      "item_id": null,
+      "apple_id": "E-early",
+      "color": "#0A7AFF",
+      "calendar": "Personal",
+      "location": null,
+      "category": "event",
+      "person": null,
+      "origin_event_id": null,
+      "source_at": null
+    },
+    {
       "id": "apple:R-late",
       "kind": "reminder",
       "title": "Return library books",
-      "at": "2026-11-27T22:47:55.970578-06:00",
+      "at": "2026-11-27T22:48:10.047988-06:00",
       "start": null,
       "end": null,
       "due": "2026-11-25",
@@ -61,10 +86,10 @@
       "source_at": null
     },
     {
-      "id": "item:itm_001a2207b3819b81ecb1f",
+      "id": "item:itm_001a2207b6f19fa116b1f",
       "kind": "reminder",
       "title": "Return the package",
-      "at": "2026-11-27T22:47:55.970578-06:00",
+      "at": "2026-11-27T22:48:10.047988-06:00",
       "start": null,
       "end": null,
       "due": "2026-11-26",
@@ -75,7 +100,7 @@
       "carried": true,
       "past": false,
       "ours": true,
-      "item_id": "itm_001a2207b3819b81ecb1f",
+      "item_id": "itm_001a2207b6f19fa116b1f",
       "apple_id": "A1",
       "color": "#0A7AFF",
       "calendar": "Household",
@@ -87,7 +112,32 @@
         "photo": "/avatars/3ef3ee7232dc6a96.jpg?v=abc"
       },
       "origin_event_id": "imessage:1",
-      "source_at": "2026-11-27T22:47:55.923529-06:00"
+      "source_at": "2026-11-27T22:48:10.000120-06:00"
+    },
+    {
+      "id": "apple:E-late",
+      "kind": "event",
+      "title": "Call with Dad",
+      "at": "2026-11-27T23:58:00-06:00",
+      "start": "2026-11-27T23:58:00-06:00",
+      "end": "2026-11-27T23:59:00-06:00",
+      "due": null,
+      "due_time": null,
+      "all_day": false,
+      "done": false,
+      "late": false,
+      "carried": false,
+      "past": false,
+      "ours": false,
+      "item_id": null,
+      "apple_id": "E-late",
+      "color": "#FF9500",
+      "calendar": "Family",
+      "location": "FaceTime",
+      "category": "event",
+      "person": null,
+      "origin_event_id": null,
+      "source_at": null
     }
   ],
   "banner": {
@@ -101,7 +151,7 @@
         "from_me": false,
         "text": "maybe get the plumber to look at the sink",
         "subject": null,
-        "received_at": "2026-11-27T22:47:55.960087-06:00",
+        "received_at": "2026-11-27T22:48:10.039073-06:00",
         "status": "needs_review",
         "status_label": "Needs review",
         "reason": "confidence 0.50 < 0.75",
@@ -116,7 +166,7 @@
       },
       "proposals": [
         {
-          "command_id": "cmd_001a2207b383fce7bc8281ad1",
+          "command_id": "cmd_001a2207b6f3d940fcde8e2d8",
           "op": "create_reminder",
           "title": "Call the plumber",
           "due": "2026-11-28",

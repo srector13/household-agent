@@ -6,7 +6,7 @@ import Glibc
 #endif
 
 public enum AgentInfo {
-    public static let version = "0.6.0"
+    public static let version = "0.7.0"
     public static let bundleIdentifier = "com.household.mac-agent"
 }
 

@@ -717,3 +717,244 @@ public struct ActionReply: Codable, Hashable, Sendable {
         case ok, error, status, label, due, dueTime = "due_time", timer, result
     }
 }
+
+// MARK: - Round 2: Today timeline, "Show on Today" sources
+
+private extension KeyedDecodingContainer {
+    /// Lenient read: a missing or null key gives `fallback` (older brains don't send new fields).
+    func lenient<T: Decodable>(_ key: Key, _ fallback: T) throws -> T {
+        try decodeIfPresent(T.self, forKey: key) ?? fallback
+    }
+}
+
+/// GET /api/v1/timeline — one day as a timeline of events and reminders.
+public struct Timeline: Codable, Hashable, Sendable {
+    public var date: String
+    public var today: String
+    public var now: String
+    public var week: [WeekDay]
+    public var addedToday: Int
+    public var banner: ReviewBanner?
+    public var allDay: [TimelineEntry]
+    public var entries: [TimelineEntry]
+
+    enum CodingKeys: String, CodingKey {
+        case date, today, now, week, addedToday = "added_today", banner, allDay = "all_day", entries
+    }
+
+    public init(date: String, today: String, now: String, week: [WeekDay] = [], addedToday: Int = 0,
+                banner: ReviewBanner? = nil, allDay: [TimelineEntry] = [], entries: [TimelineEntry] = []) {
+        self.date = date
+        self.today = today
+        self.now = now
+        self.week = week
+        self.addedToday = addedToday
+        self.banner = banner
+        self.allDay = allDay
+        self.entries = entries
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date = try c.decode(String.self, forKey: .date)
+        today = try c.lenient(.today, date)
+        now = try c.lenient(.now, "")
+        week = try c.lenient(.week, [])
+        addedToday = try c.lenient(.addedToday, 0)
+        banner = try c.decodeIfPresent(ReviewBanner.self, forKey: .banner)
+        allDay = try c.lenient(.allDay, [])
+        entries = try c.lenient(.entries, [])
+    }
+
+    public var isToday: Bool { date == today }
+    public var nowDate: Date? { BrainDate.parse(now) }
+}
+
+public struct WeekDay: Codable, Hashable, Identifiable, Sendable {
+    public var date: String
+    public var count: Int
+    public var id: String { date }
+    public var day: Date? { BrainDate.day(date) }
+
+    enum CodingKeys: String, CodingKey { case date, count }
+
+    public init(date: String, count: Int) {
+        self.date = date
+        self.count = count
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date = try c.decode(String.self, forKey: .date)
+        count = try c.lenient(.count, 0)
+    }
+}
+
+/// The one-line "check this" card at the top of Today; `entry` is the first message waiting for review.
+public struct ReviewBanner: Codable, Hashable, Sendable {
+    public var count: Int
+    public var entry: ReviewEntry
+}
+
+/// Who an item came from (faces on the timeline). `photo` is an avatar path on the brain.
+public struct PersonRef: Codable, Hashable, Sendable {
+    public var key: String
+    public var label: String
+    public var photo: String?
+}
+
+public struct TimelineEntry: Codable, Hashable, Identifiable, Sendable {
+    public var id: String                // "item:<item_id>" or "apple:<apple_id>"
+    public var kind: String              // "event" | "reminder"
+    public var title: String
+    public var at: String?               // where it sits; carried items get "now"
+    public var start: String?
+    public var end: String?
+    public var due: String?
+    public var dueTime: String?
+    public var allDay: Bool
+    public var done: Bool
+    public var late: Bool
+    public var carried: Bool             // already due, pulled up to the now line
+    public var past: Bool                // event already ended (faded)
+    public var ours: Bool                // made by Second Brain (sparkle)
+    public var itemId: String?
+    public var appleId: String?
+    public var color: String?
+    public var calendar: String?         // calendar or list name
+    public var location: String?
+    public var category: String?
+    public var person: PersonRef?
+    public var originEventId: String?
+    public var sourceAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, title, at, start, end, due, dueTime = "due_time", allDay = "all_day", done, late, carried, past
+        case ours, itemId = "item_id", appleId = "apple_id", color, calendar, location, category, person
+        case originEventId = "origin_event_id", sourceAt = "source_at"
+    }
+
+    public init(id: String, kind: String, title: String, at: String? = nil, start: String? = nil, end: String? = nil,
+                due: String? = nil, dueTime: String? = nil, allDay: Bool = false, done: Bool = false,
+                late: Bool = false, carried: Bool = false, past: Bool = false, ours: Bool = false,
+                itemId: String? = nil, appleId: String? = nil, color: String? = nil, calendar: String? = nil,
+                location: String? = nil, category: String? = nil, person: PersonRef? = nil,
+                originEventId: String? = nil, sourceAt: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.at = at
+        self.start = start
+        self.end = end
+        self.due = due
+        self.dueTime = dueTime
+        self.allDay = allDay
+        self.done = done
+        self.late = late
+        self.carried = carried
+        self.past = past
+        self.ours = ours
+        self.itemId = itemId
+        self.appleId = appleId
+        self.color = color
+        self.calendar = calendar
+        self.location = location
+        self.category = category
+        self.person = person
+        self.originEventId = originEventId
+        self.sourceAt = sourceAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        kind = try c.lenient(.kind, "reminder")
+        title = try c.lenient(.title, "")
+        at = try c.decodeIfPresent(String.self, forKey: .at)
+        start = try c.decodeIfPresent(String.self, forKey: .start)
+        end = try c.decodeIfPresent(String.self, forKey: .end)
+        due = try c.decodeIfPresent(String.self, forKey: .due)
+        dueTime = try c.decodeIfPresent(String.self, forKey: .dueTime)
+        allDay = try c.lenient(.allDay, false)
+        done = try c.lenient(.done, false)
+        late = try c.lenient(.late, false)
+        carried = try c.lenient(.carried, false)
+        past = try c.lenient(.past, false)
+        ours = try c.lenient(.ours, false)
+        itemId = try c.decodeIfPresent(String.self, forKey: .itemId)
+        appleId = try c.decodeIfPresent(String.self, forKey: .appleId)
+        color = try c.decodeIfPresent(String.self, forKey: .color)
+        calendar = try c.decodeIfPresent(String.self, forKey: .calendar)
+        location = try c.decodeIfPresent(String.self, forKey: .location)
+        category = try c.decodeIfPresent(String.self, forKey: .category)
+        person = try c.decodeIfPresent(PersonRef.self, forKey: .person)
+        originEventId = try c.decodeIfPresent(String.self, forKey: .originEventId)
+        sourceAt = try c.decodeIfPresent(String.self, forKey: .sourceAt)
+    }
+
+    public var isEvent: Bool { kind == "event" }
+    public var atDate: Date? { BrainDate.parse(at) }
+    public var startDate: Date? { BrainDate.parse(start) }
+    public var endDate: Date? { BrainDate.parse(end) }
+}
+
+/// GET /api/v1/sources — calendars and reminder lists, and which are shown on Today.
+public struct Sources: Codable, Hashable, Sendable {
+    public var calendars: [SourceEntry]
+    public var lists: [SourceEntry]
+
+    enum CodingKeys: String, CodingKey { case calendars, lists }
+
+    public init(calendars: [SourceEntry] = [], lists: [SourceEntry] = []) {
+        self.calendars = calendars
+        self.lists = lists
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        calendars = try c.lenient(.calendars, [])
+        lists = try c.lenient(.lists, [])
+        for i in calendars.indices { calendars[i].kind = "calendar" }
+        for i in lists.indices { lists[i].kind = "list" }
+    }
+}
+
+public struct SourceEntry: Codable, Hashable, Identifiable, Sendable {
+    public var name: String
+    public var color: String?
+    public var ours: Bool
+    public var shown: Bool
+    public var account: String?
+    public var count: Int
+    /// "calendar" | "list" — set by `Sources` from the section it came in (not sent by the brain).
+    public var kind: String = ""
+    public var id: String { kind + ":" + name }
+
+    enum CodingKeys: String, CodingKey { case name, color, ours, shown, account, count }
+
+    public init(name: String, color: String? = nil, ours: Bool = false, shown: Bool = true, account: String? = nil,
+                count: Int = 0, kind: String = "") {
+        self.name = name
+        self.color = color
+        self.ours = ours
+        self.shown = shown
+        self.account = account
+        self.count = count
+        self.kind = kind
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        color = try c.decodeIfPresent(String.self, forKey: .color)
+        ours = try c.lenient(.ours, false)
+        shown = try c.lenient(.shown, true)
+        account = try c.decodeIfPresent(String.self, forKey: .account)
+        count = try c.lenient(.count, 0)
+    }
+}
+
+/// POST /api/v1/people reply.
+public struct AddedPerson: Codable, Hashable, Sendable {
+    public var person: Person
+}

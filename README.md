@@ -93,6 +93,11 @@ Lists, Review and More in the tab bar, a **Capture a thought…** bar above it, 
 Focus mode with a timer, the Weekly reset card deck, Status and native Settings. It talks to the
 same brain over Tailscale (the `/api/v1` JSON API), so the web app keeps working alongside it.
 
+Today is one timeline of your events and reminders — Second Brain's and your own, from the
+calendars and lists you switch on — and you can tick off or move any reminder. The brain also
+files a to-do into your own matching list ("milk" → Groceries) and skips things that are already
+there (`rules.route_to_lists`, `rules.skip_duplicates`).
+
 **Install with Feather (no Apple developer account needed):**
 
 1. On GitHub: **Actions → Build unsigned IPA → Run workflow** (the repository must be public for

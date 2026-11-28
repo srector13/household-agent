@@ -134,7 +134,13 @@ def test_timeline_places_events_and_reminders(client, llm):
 def test_banner_and_fixtures(client, llm):
     client.post("/api/agent/avatars", headers=AUTH, json={"people": [
         {"handle": "+17855550000", "name": "Sarah Smith", "image": base64.b64encode(JPEG).decode(), "image_hash": "abc"}]})
-    snapshot(client)
+    base = snapshot(client)
+    assert base["events"] == 4
+    today = [{"id": "E-early", "title": "Early swim", "start": f"{day(0)}T00:00:00-06:00",
+              "end": f"{day(0)}T00:01:00-06:00", "calendar": "Personal", "calendar_color": "#0A7AFF"},
+             {"id": "E-late", "title": "Call with Dad", "start": f"{day(0)}T23:58:00-06:00",
+              "end": f"{day(0)}T23:59:00-06:00", "calendar": "Family", "calendar_color": "#FF9500", "location": "FaceTime"}]
+    client.post("/api/agent/snapshot", headers=AUTH, json={"events": today + client.app_state.db.kv_get("snapshot")["events"]})
     llm.responder = lambda p: extraction(reminder("Pick up the dry cleaning", due=day(1), time="09:00"),
                                          reminder("Return the package", due=day(1)))
     post(client, event_id="imessage:1", text="dry cleaning tomorrow and the package")
@@ -152,6 +158,8 @@ def test_banner_and_fixtures(client, llm):
     assert b["entry"]["event"]["photo"].startswith("/avatars/")
     p = next(e for e in t["entries"] if e["title"].startswith("Return the package"))
     assert p["person"]["photo"].startswith("/avatars/") and p["carried"]
+    swim = next(e for e in t["entries"] if e["title"] == "Early swim")
+    assert swim["past"] and swim["color"] == "#0A7AFF"
     save("timeline", t)
     save("sources", g(client, "/api/v1/sources"))
 

@@ -22,6 +22,43 @@ final class DecodingTests: XCTestCase {
         XCTAssertFalse(home.recent.isEmpty)
     }
 
+    func testTimelineAndSources() throws {
+        let t: Timeline = try fixture("timeline")
+        XCTAssertTrue(t.isToday)
+        XCTAssertEqual(t.week.count, 7)
+        XCTAssertNotNil(t.nowDate)
+        let banner = try XCTUnwrap(t.banner)
+        XCTAssertEqual(banner.count, 1)
+        XCTAssertTrue(banner.entry.event.text.hasPrefix("maybe get the plumber"))
+        let carried = t.entries.filter(\.carried)
+        XCTAssertTrue(carried.contains { $0.ours && $0.person?.photo != nil })
+        XCTAssertTrue(carried.contains { !$0.ours && $0.appleId == "R-late" && $0.late })
+        let swim = try XCTUnwrap(t.entries.first { $0.title == "Early swim" })
+        XCTAssertTrue(swim.isEvent && swim.past && !swim.ours)
+        XCTAssertEqual(swim.color, "#0A7AFF")
+        XCTAssertNotNil(swim.startDate)
+        XCTAssertNotNil(swim.endDate)
+        XCTAssertTrue(t.entries.allSatisfy { $0.atDate != nil })
+
+        let s: Sources = try fixture("sources")
+        XCTAssertEqual(s.calendars.first?.name, "Family")
+        XCTAssertTrue(s.calendars.first?.ours ?? false)
+        XCTAssertEqual(s.calendars.first?.kind, "calendar")
+        let groceries = try XCTUnwrap(s.lists.first { $0.name == "Groceries" })
+        XCTAssertEqual(groceries.id, "list:Groceries")
+        XCTAssertFalse(groceries.ours)
+        XCTAssertTrue(groceries.shown)
+    }
+
+    func testTimelineIsLenient() throws {
+        let json = ##"{"date":"2026-11-28","entries":[{"id":"item:x","title":"Milk"}]}"##
+        let t = try BrainAPI.decoder.decode(Timeline.self, from: Data(json.utf8))
+        XCTAssertEqual(t.today, "2026-11-28")
+        XCTAssertNil(t.banner)
+        XCTAssertEqual(t.entries.first?.kind, "reminder")
+        XCTAssertFalse(t.entries.first?.done ?? true)
+    }
+
     func testNextUpDecodesTheInKey() throws {
         let json = ##"{"kind":"event","title":"Dentist","at":"2026-11-22T09:00:00-06:00","end":null,"ongoing":false,"in":"in 25 min","where":"Home","event_id":null,"item_id":null,"color":"#34C759"}"##
         let n = try BrainAPI.decoder.decode(Home.NextUp.self, from: Data(json.utf8))

@@ -277,4 +277,44 @@ public final class BrainAPI: @unchecked Sendable {
 
     @discardableResult
     public func post(_ path: String, json: JSONValue? = nil) async throws -> ActionReply { try await send("POST", path, json: json) }
+
+    // MARK: Today timeline & "Show on Today"
+
+    /// One day's timeline; `day` is "YYYY-MM-DD" (nil = today on the brain's clock).
+    public func timeline(day: String? = nil) async throws -> Timeline { try await get("/api/v1/timeline", query: ["day": day]) }
+
+    public func sources() async throws -> Sources { try await get("/api/v1/sources") }
+
+    /// kind: "calendar" | "list". Second Brain's own calendars and lists stay shown.
+    @discardableResult
+    public func setSource(kind: String, name: String, shown: Bool) async throws -> Sources {
+        try await send("POST", "/api/v1/sources", json: ["kind": .string(kind), "name": .string(name), "shown": .bool(shown)])
+    }
+
+    /// Tick (or untick) one of your own reminders — any list, not only Second Brain's.
+    @discardableResult
+    public func appleDone(_ appleId: String, done: Bool) async throws -> ActionReply {
+        try await send("POST", "/api/v1/apple/\(Self.seg(appleId))/done", json: ["done": .bool(done)])
+    }
+
+    /// Move one of your own reminders: `due` "YYYY-MM-DD", `dueTime` "HH:MM" (nil = no time).
+    @discardableResult
+    public func appleMove(_ appleId: String, due: String, dueTime: String?) async throws -> ActionReply {
+        try await send("POST", "/api/v1/apple/\(Self.seg(appleId))/move", json: ["due": .string(due), "due_time": .from(dueTime)])
+    }
+
+    /// Start watching someone picked from Contacts. `photo` is JPEG data (keep it under ~200 KB).
+    @discardableResult
+    public func addPerson(name: String, label: String, handle: String, photo: Data?, isMe: Bool) async throws -> Person {
+        try await send("POST", "/api/v1/people", json: [
+            "name": .string(name), "label": .string(label), "handle": .string(handle),
+            "photo": .from(photo?.base64EncodedString()), "is_me": .bool(isMe),
+        ], as: AddedPerson.self).person
+    }
+
+    /// Stop watching someone (their items stay).
+    @discardableResult
+    public func removePerson(_ key: String) async throws -> ActionReply {
+        try await send("DELETE", "/api/v1/people/" + Self.seg(key))
+    }
 }

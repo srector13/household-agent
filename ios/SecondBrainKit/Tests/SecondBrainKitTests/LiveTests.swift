@@ -28,6 +28,28 @@ final class LiveTests: XCTestCase {
         _ = try await api.system()
         _ = try await api.notifications(after: 0)
         _ = try await api.settings()
+        _ = try await api.timeline()
+        _ = try await api.sources()
+    }
+
+    func testTimelineSourcesAndPeople() async throws {
+        let t = try await api.timeline()
+        XCTAssertEqual(t.week.count, 7)
+        _ = try await api.timeline(day: t.week.first?.date)
+        let s = try await api.sources()
+        if let other = s.calendars.first(where: { !$0.ours }) {
+            let hidden = try await api.setSource(kind: "calendar", name: other.name, shown: false)
+            XCTAssertEqual(hidden.calendars.first { $0.name == other.name }?.shown, false)
+            try await api.setSource(kind: "calendar", name: other.name, shown: true)
+        }
+        if let r = t.entries.first(where: { !$0.ours && !$0.isEvent }), let id = r.appleId {
+            try await api.appleDone(id, done: true)
+            try await api.appleDone(id, done: false)
+            try await api.appleMove(id, due: t.date, dueTime: "21:30")
+        }
+        let p = try await api.addPerson(name: "Test Person", label: "Tester", handle: "+13125550123", photo: nil, isMe: false)
+        XCTAssertEqual(p.label, "Tester")
+        try await api.removePerson(p.key)
     }
 
     func testActionsRoundTrip() async throws {

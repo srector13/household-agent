@@ -254,16 +254,23 @@ commands); replaces the brain's previous snapshot.
              "calendar_color": "#FF2D55", "location": null, "ours": false}],
  "reminders": [{"id": "x-apple-...", "title": "Pick up eggs", "list": "Groceries",
                 "list_color": "#34C759", "due": "2026-11-22", "due_time": "17:00",
-                "priority": 0, "ours": true}]}
+                "priority": 0, "ours": true}],
+ "calendars": [{"title": "Family", "color": "#FF9500", "kind": "event", "account": "iCloud"},
+               {"title": "Groceries", "color": "#34C759", "kind": "reminder", "account": "iCloud"}]}
 ```
 
-- `events`: all calendars, from now − 2 h to now + `range_days`, recurring events expanded into
+- `events`: all calendars, from now − 7 days (so the app's week strip has past days) to now + `range_days`, recurring events expanded into
   occurrences, canceled events skipped, sorted by `start`, ≤400. Occurrences of a recurring event
   share an Apple identifier, so their `id` is `"<calendarItemIdentifier>/<start>"`; one-off events
   use the plain identifier.
 - `reminders`: incomplete reminders with a due date from now − 30 days (overdue) to now +
-  `range_days`; reminders without a due date are not sent. Sorted by due, ≤400. `due_time` is
+  `range_days` (sorted by due, ≤400), then incomplete reminders with **no** due date (`due: null`,
+  ≤300, agent ≥ 0.7) — the brain uses those to skip duplicates ("milk" is already on Groceries). `due_time` is
   `null` for date-only reminders; `priority` is EventKit's 0 (none) / 1–9 (1 = high).
+- `calendars` (agent ≥ 0.7): every calendar (`kind: "event"`) and reminder list (`kind: "reminder"`),
+  even empty ones, ≤100 — the app's "Show on Today" picker and the model's list of your lists.
+  `account` is the source (iCloud, Exchange…). `null` when unreadable; older agents omit it and the
+  brain derives names from the items.
 - `ours`: the item's notes contain a `[ha:` tag (created by Second Brain).
 - Times are ISO 8601 with the Mac's local offset; colors are `#RRGGBB` (best effort, else `null`).
 - A kind the agent cannot read (no permission, store not loaded) is sent as `null` = "keep what
@@ -322,10 +329,59 @@ password, when one is set); no Origin header is needed. Read-only screens:
 | `GET /api/v1/events/{event_id}` | one message: trace, commands, items, what can be done |
 | `GET /api/v1/system` | health, funnel, latency, 14-day chart, alerts, open commands |
 | `GET /api/v1/notifications?after=ID` | the notification feed (what web push sends), for local notifications |
+| `GET /api/v1/timeline?day=YYYY-MM-DD` | one day as a timeline (brain ≥ 0.11, see below) |
+| `GET /api/v1/sources` | calendars and reminder lists, and which are shown on Today |
+
+### Today timeline (brain ≥ 0.11)
+
+`GET /api/v1/timeline?day=` (default today, brain timezone):
+
+```json
+{"date": "2026-11-28", "today": "2026-11-28", "now": "2026-11-28T11:42:00-06:00",
+ "week": [{"date": "2026-11-22", "count": 0}, "… 7 days, Sunday … Saturday"],
+ "added_today": 4,
+ "banner": {"count": 1, "entry": {"event": {"…": "as in /review"}, "proposals": [], "reasons": []}},
+ "all_day": [Entry], "entries": [Entry]}
+```
+
+Entry: `id` (`item:<item_id>` or `apple:<apple_id>`), `kind` (`event`|`reminder`), `title`, `at`
+(placement), `start`/`end` (events), `due`/`due_time` (reminders), `all_day`, `done`, `late`,
+`carried`, `past`, `ours` (made by Second Brain), `item_id`, `apple_id`, `color`, `calendar`
+(calendar or list name), `location`, `category` (`todo`|`promise`|`waiting`|`event`), `person`
+(`{key, label, photo}`, who it came from), `origin_event_id`, `source_at` (when that message arrived).
+
+- Events sit at `start`; all-day events are in `all_day`; ended events are `past`.
+- Reminders sit at their due time. On today, open reminders already due — an earlier day, an
+  earlier time, or today with no time — are `carried` with `at` = `now` (`late` when overdue).
+- A reminder with no time on another day is an entry with `all_day: true` at 23:59 (shown last, "Anytime").
+- Completed today: Second Brain's to-dos and reminders you ticked in the app stay with `done: true`.
+- Only shown calendars and lists; Second Brain's own (the default calendar, the reminder and
+  waiting lists, collection lists) are always shown. `banner` is the newest message waiting for review.
+- `week[].count` = items on that day (carried ones not counted).
+
+### Show on Today
+
+`GET /api/v1/sources` → `{"calendars": [Source], "lists": [Source]}`, Source =
+`{"name", "color", "ours", "shown", "account", "count"}` (Second Brain's own first).
+`POST /api/v1/sources {"kind": "calendar"|"list", "name": "...", "shown": false}` → the same shape.
+
+### Your own reminders, people from Contacts
+
+| Endpoint | Does |
+|---|---|
+| `POST /api/v1/apple/{apple_id}/done {"done": true\|false}` | ticks/unticks any reminder (queues `update_item` with `completed`) |
+| `POST /api/v1/apple/{apple_id}/move {"due": "YYYY-MM-DD", "due_time": "HH:MM"\|null}` | moves any reminder (due, time, alert); the timeline moves at once → `{"ok", "status": "moved", "label"}` |
+| `POST /api/v1/people {"name", "label", "handle", "photo": base64 JPEG\|null, "is_me": false}` | watch someone picked from Contacts: adds the allowlist entry (the Mac re-syncs, so their texts are read right away) and stores the photo (≤200 KB JPEG) → `{"person": Person}`; `409` if already watched |
+| `DELETE /api/v1/people/{key}` | stop watching (their items stay) |
+
+Routing and duplicates (`rules.route_to_lists`, `rules.skip_duplicates`, both on by default): the
+model sees your own reminder lists and may put a to-do in one ("milk" → Groceries, only if that list
+exists); a to-do already open in any list, or an event already on a calendar that day within 30
+minutes with a similar title, is skipped and the reason shows in the message's trace.
 
 Actions reuse the dashboard's endpoints: `/api/items/{id}/{done|snooze|reschedule|delete|restore|breakdown}`,
 `/api/items/{id}/snooze-options`, `/api/focus/{id}`, `/api/focus/timer`, `/api/weekly/...`,
-`/api/today/{repick|morning|evening|tomorrow}`, `/api/capture`, `/api/external/{apple_id}/done`,
+`/api/today/{repick|morning|evening|tomorrow}`, `/api/capture`, `/api/external/{apple_id}/done` (older; use `/api/v1/apple/…`),
 `/actions/{approve|reject|undo|retry|reprocess}/{event_id}` (send `X-Requested-With: fetch` for JSON),
 and `/api/settings` (GET / PATCH). Shapes are pinned by `brain/tests/test_api_v1.py`, which saves sample
 responses that the Swift tests decode.

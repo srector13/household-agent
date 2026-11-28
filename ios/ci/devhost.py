@@ -31,6 +31,38 @@ BASE = f"http://127.0.0.1:{PORT}"
 ROOT = Path(__file__).resolve().parents[2]
 SARAH = "+17855550000"
 FAMILY = "iMessage;+;chat5512"
+# A tiny generated portrait (not a real person), so Sarah has a contact photo in screenshots.
+SARAH_PHOTO = (
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEEx"
+    "NDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7"
+    "Ozs7Ozs7Ozs7Ozs7Ozv/wAARCABgAGADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAA"
+    "AgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6"
+    "Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXG"
+    "x8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREA"
+    "AgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5"
+    "OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPE"
+    "xcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD0DdRuqPdRuryz1bEm6jdUe6jdQFiTdRuq"
+    "PdRuoCxJuo3VHuo3UBYk3Ubqj3UbqAsSbqN1R7qN1AWGbqN1R5ozSLsSbqN1R5p0amSRUHVjigCe2ge5k2rwO59K049NgUfN"
+    "lz7mp4YUgjCIMf1qSumNNLc451W3oVX063YYAK+4NZ11avbNz8ynoa26bJGsiFHGQacqaewo1Wnqc9uo3UtzF5Fw8eeAeKiz"
+    "XK9DsWquSbqN1R5ozQOxHmjNR5ozSLsSZq3phzfx/j/KqGakgmMM6SD+E5pxdmmTJXTR1dFMilSaMOhBU9xT67jzQoopGYIp"
+    "ZiAB1JoAxdZOLtf9ys/NSX1z9ou3cH5ei/Sq+a4pu8mejCNopEmaM1HmjNSXYZmjNR7qN1SVYkzRmo91PhiluH2RIXPtQGxc"
+    "sNRezkwctGeq1uQ6naTLkTKp7huKzrbQGYBriTb6qv8AjV1NGslUAoWPqSa6YKokcdV0myaTUbSNcmdT9DmsXUdUa7/dx5WL"
+    "9TWq2j2RUgREZ7hjxVOfw+MZglOfRv8AGnNVGhU3STuY+aM0txbT2rbZoyvv2NRbq5nodqs9iTNGaj3UbqQWI91G6o91KCSQ"
+    "B1NIuxcsbOW+m2Jwo+83pXV2tpDaRhIlA45Pc1BpdktnZqpUeYwy5q7XbThyq/U82tVc3ZbBRRRWpzhRRRQBHNBFcRlJUDA+"
+    "tcvqenPYS5GWiY/K39K6yoLy1S7tmicDkcH0NZ1IKSNqVVwfkcZuo3UkqNFK0bjDKcGmbq4T1Bm6rmkx+fqcCZxhs/lzWfmt"
+    "DQnVdXgLEAZI5+lOHxIKnwM7WiiivRPFCiiigAooooAKKKKAOS8Qx+VqZbOfMUN9O39Ky91avid1OpKAQSIwD7cmsbNefU+N"
+    "nsUdaaP/2Q=="
+)
+CATALOG = [  # every calendar and reminder list on the "Mac" (Show on Today)
+    {"title": "Family", "color": "#FF9500", "kind": "event", "account": "iCloud"},
+    {"title": "Personal", "color": "#0A7AFF", "kind": "event", "account": "iCloud"},
+    {"title": "Work", "color": "#34C759", "kind": "event", "account": "Exchange"},
+    {"title": "Birthdays", "color": "#8E8E93", "kind": "event", "account": None},
+    {"title": "Household", "color": "#0A7AFF", "kind": "reminder", "account": "iCloud"},
+    {"title": "⏳ Waiting on", "color": "#0E8C96", "kind": "reminder", "account": "iCloud"},
+    {"title": "Groceries", "color": "#FF9500", "kind": "reminder", "account": "iCloud"},
+    {"title": "Work", "color": "#8E8E93", "kind": "reminder", "account": "iCloud"},
+]
 
 
 def day(n: int) -> str:
@@ -63,6 +95,9 @@ def rules():
         ("water bill", [act("create_reminder", "Pay the water bill", due_date=day(0), due_time="17:00")], .93),
         ("plumber", [act("create_reminder", "Call the plumber about the sink")], .55),  # low confidence → review
         ("gutters", [act("create_reminder", "Clean the gutters")], .9),
+        ("pack a bag", [act("create_reminder", "Pack a bag for the kids", due_date=day(0), due_time="23:59")], .93),
+        ("soccer", [act("create_event", "Soccer practice", start=f"{day(0)}T23:00", end=f"{day(0)}T23:45",
+                        location="Riverside Park")], .92),
     ]
 
 
@@ -123,8 +158,12 @@ def run_mac(c: httpx.Client):
 def seed(db_path: str):
     c = httpx.Client(base_url=BASE, timeout=30)
     heartbeat(c)
+    c.post("/api/agent/avatars", headers=AUTH, json={"people": [
+        {"handle": SARAH, "name": "Sarah Smith", "image": SARAH_PHOTO, "image_hash": "devhost1"}]})
     now = datetime.now(TZ)
     msgs = [
+        (SARAH, None, False, "Can you pack a bag for the kids?"),
+        (SARAH, None, False, "Soccer practice is at Riverside Park today"),
         (SARAH, None, False, "We need milk and bread"),
         (SARAH, None, False, "Can you grab eggs tomorrow?"),
         (SARAH, None, False, "Don't forget the water bill is due today"),
@@ -151,19 +190,41 @@ def seed(db_path: str):
     def at(n, h, m):
         return datetime.combine(now.date() + timedelta(days=n), datetime.min.time(), TZ).replace(hour=h, minute=m).isoformat()
 
+    past = (now - timedelta(hours=3)).replace(second=0, microsecond=0)
     c.post("/api/agent/snapshot", headers=AUTH, json={
         "events": [
-            {"id": "ext-1", "title": "Soccer practice", "start": soon.isoformat(), "end": (soon + timedelta(hours=1)).isoformat(),
-             "calendar": "Family", "calendar_color": "#34C759", "location": "Riverside Park"},
-            {"id": "ext-2", "title": "Book club", "start": at(3, 19, 30), "end": at(3, 21, 0),
-             "calendar": "Personal", "calendar_color": "#FF9500"}],
-        "reminders": [{"id": "rem-1", "title": "Renew passport", "list": "Personal", "due": day(2), "list_color": "#007AFF"}]})
+            {"id": "ext-0", "title": "Coffee with Jen", "start": past.isoformat(), "end": (past + timedelta(minutes=45)).isoformat(),
+             "calendar": "Personal", "calendar_color": "#0A7AFF", "location": "Blue Door Cafe"},
+            {"id": "ext-pic", "title": "Emma's picture day", "start": at(0, 0, 0), "end": at(1, 0, 0), "all_day": True,
+             "calendar": "Family", "calendar_color": "#FF9500"},
+            {"id": "ext-1", "title": "Piano lesson", "start": soon.isoformat(), "end": (soon + timedelta(hours=1)).isoformat(),
+             "calendar": "Family", "calendar_color": "#FF9500", "location": "Ms. Lee's"},
+            {"id": "ext-2", "title": "Book club", "start": at(0, 19, 30), "end": at(0, 21, 0),
+             "calendar": "Personal", "calendar_color": "#0A7AFF", "location": "Library"},
+            {"id": "ext-3", "title": "Team sync", "start": at(2, 9, 0), "end": at(2, 9, 30),
+             "calendar": "Work", "calendar_color": "#34C759"},
+            {"id": "ext-4", "title": "Grandma's birthday", "start": at(4, 0, 0), "end": at(5, 0, 0), "all_day": True,
+             "calendar": "Birthdays", "calendar_color": "#8E8E93"}],
+        "reminders": [
+            {"id": "rem-1", "title": "Renew passport", "list": "Household", "due": day(2), "list_color": "#0A7AFF"},
+            {"id": "rem-2", "title": "Return library books", "list": "Household", "due": day(-1), "list_color": "#0A7AFF"},
+            {"id": "rem-3", "title": "Submit expense report", "list": "Work", "due": day(0), "due_time": "23:30",
+             "list_color": "#8E8E93"},
+            {"id": "rem-4", "title": "Paper towels", "list": "Groceries", "list_color": "#FF9500"},
+            {"id": "rem-5", "title": "Coffee beans", "list": "Groceries", "list_color": "#FF9500"},
+            {"id": "rem-6", "title": "Bananas", "list": "Groceries", "list_color": "#FF9500"}],
+        "calendars": CATALOG})
     c.post("/api/today/repick")
     run_mac(c)
     # one stale item for the weekly reset
     con = sqlite3.connect(db_path)
     old = (datetime.now(TZ) - timedelta(days=12)).astimezone(ZoneInfo("UTC")).isoformat()
     con.execute("UPDATE items SET created_at=?, updated_at=? WHERE title='Clean the gutters'", (old, old))
+    # "Pack a bag" was asked for this morning and is still open → it rides along at the now line
+    asked = now - timedelta(hours=4)
+    con.execute("UPDATE items SET state=json_set(state, '$.due', ?, '$.due_time', ?) WHERE title LIKE 'Pack a bag%'",
+                (asked.date().isoformat(), asked.strftime("%H:%M")))
+    con.execute("UPDATE events SET received_at=? WHERE text LIKE 'Can you pack a bag%'", (asked.isoformat(),))
     con.commit()
     con.close()
     return c
